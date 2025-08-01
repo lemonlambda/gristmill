@@ -258,25 +258,18 @@ fn main() {
 
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
-    // We now create a buffer that will store the shape of our triangle. We use `#[repr(C)]` here
-    // to force rustc to use a defined layout for our data, as the default representation has *no
-    // guarantees*.
-    #[derive(BufferContents, Vertex)]
-    #[repr(C)]
-    struct Vertex {
-        #[format(R32G32_SFLOAT)]
-        position: [f32; 2],
-    }
-
     let vertices = [
-        Vertex {
-            position: [-0.5, -0.25],
+        MyVertex {
+            position: [0.0, -0.5],
+            color: [1.0, 0.0, 0.0],
         },
-        Vertex {
-            position: [0.0, 0.5],
+        MyVertex {
+            position: [-0.5, 0.5],
+            color: [0.0, 1.0, 0.0],
         },
-        Vertex {
-            position: [0.25, -0.1],
+        MyVertex {
+            position: [0.5, 0.5],
+            color: [0.0, 0.0, 1.0],
         },
     ];
     let vertex_buffer = Buffer::from_iter(
@@ -315,9 +308,13 @@ fn main() {
                 #version 450
 
                 layout(location = 0) in vec2 position;
+                layout(location = 1) in vec3 color;
+
+                layout(location = 0) out vec3 frag_color;
 
                 void main() {
                     gl_Position = vec4(position, 0.0, 1.0);
+                    frag_color = color;
                 }
             ",
         }
@@ -331,8 +328,11 @@ fn main() {
 
                 layout(location = 0) out vec4 f_color;
 
+                layout(location = 0) in vec3 frag_color;
+
+
                 void main() {
-                    f_color = vec4(1.0, 0.0, 0.0, 1.0);
+                    f_color = vec4(frag_color, 1.0);
                 }
             ",
         }
@@ -398,7 +398,7 @@ fn main() {
 
         // Automatically generate a vertex input state from the vertex shader's input interface,
         // that takes a single vertex buffer containing `Vertex` structs.
-        let vertex_input_state = Vertex::per_vertex()
+        let vertex_input_state = MyVertex::per_vertex()
             .definition(&vs.info().input_interface)
             .unwrap();
 
@@ -618,7 +618,7 @@ fn main() {
                             //
                             // Only attachments that have `AttachmentLoadOp::Clear` are provided
                             // with clear values, any others should use `None` as the clear value.
-                            clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
+                            clear_values: vec![Some([0.0, 0.0, 0.0, 1.0].into())],
 
                             ..RenderPassBeginInfo::framebuffer(
                                 framebuffers[image_index as usize].clone(),
@@ -715,4 +715,16 @@ fn window_size_dependent_setup(
             .unwrap()
         })
         .collect::<Vec<_>>()
+}
+
+// We now create a buffer that will store the shape of our triangle. We use `#[repr(C)]` here
+// to force rustc to use a defined layout for our data, as the default representation has *no
+// guarantees*.
+#[derive(BufferContents, Vertex)]
+#[repr(C)]
+struct MyVertex {
+    #[format(R32G32_SFLOAT)]
+    position: [f32; 2],
+    #[format(R32G32B32_SFLOAT)]
+    color: [f32; 3],
 }
