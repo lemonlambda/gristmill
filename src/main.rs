@@ -10,6 +10,8 @@ use vulkano::{
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, KeyEvent, StartCause, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::keyboard::KeyCode;
+use winit::keyboard::PhysicalKey;
 use winit::keyboard::{Key, NamedKey};
 use winit::window::{Window, WindowAttributes, WindowId};
 
@@ -59,6 +61,7 @@ fn main() {
         vulkan_info,
 
         first: true,
+        keys_down: KeysDown::default(),
 
         mode: Mode::default(),
         request_redraw: false,
@@ -90,6 +93,14 @@ pub struct VulkanInfo {
     pub vertices: Vec<MyVertex>,
 }
 
+#[derive(Debug, Default, Clone, Copy)]
+struct KeysDown {
+    w: bool,
+    s: bool,
+    a: bool,
+    d: bool,
+}
+
 struct App {
     mode: Mode,
     request_redraw: bool,
@@ -99,6 +110,8 @@ struct App {
     window: Option<Window>,
 
     vulkan_info: VulkanInfo,
+
+    keys_down: KeysDown,
 
     first: bool,
 }
@@ -130,6 +143,32 @@ impl ApplicationHandler for App {
             WindowEvent::Resized(_) => {
                 self.request_redraw = true;
                 self.recreate_swapchain = true;
+            }
+            WindowEvent::KeyboardInput {
+                device_id,
+                event,
+                is_synthetic,
+            } => {
+                if event.repeat {
+                    return;
+                }
+
+                match event.physical_key {
+                    PhysicalKey::Code(code) => {
+                        let state = match event.state {
+                            ElementState::Pressed => true,
+                            ElementState::Released => false,
+                        };
+                        match code {
+                            KeyCode::KeyW => self.keys_down.w = state,
+                            KeyCode::KeyS => self.keys_down.s = state,
+                            KeyCode::KeyA => self.keys_down.a = state,
+                            KeyCode::KeyD => self.keys_down.d = state,
+                            _ => {}
+                        }
+                    }
+                    _ => {}
+                }
             }
             WindowEvent::RedrawRequested => self.request_redraw = true,
             _ => (),
@@ -182,7 +221,21 @@ impl ApplicationHandler for App {
             }
         };
 
-        self.vulkan_info.context.viewport.offset[0] += 5.0;
+        // self.vulkan_info.context.viewport.offset[0] += 5.0;
+        println!("{:#?}", self.keys_down);
+
+        if self.keys_down.w {
+            self.vulkan_info.context.viewport.offset[1] -= 5.0;
+        }
+        if self.keys_down.s {
+            self.vulkan_info.context.viewport.offset[1] += 5.0;
+        }
+        if self.keys_down.a {
+            self.vulkan_info.context.viewport.offset[0] -= 5.0;
+        }
+        if self.keys_down.d {
+            self.vulkan_info.context.viewport.offset[0] += 5.0;
+        }
 
         if self.close_requested {
             event_loop.exit();
