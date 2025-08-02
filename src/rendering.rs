@@ -32,8 +32,6 @@ use vulkano::{
     },
     sync::{self, GpuFuture},
 };
-use winit::event_loop::ActiveEventLoop;
-use winit::raw_window_handle::HasRawWindowHandle;
 use winit::{
     event_loop::EventLoop,
     window::{Window, WindowAttributes},
@@ -120,6 +118,7 @@ impl VulkanContext {
         .unwrap();
 
         let window_attributes = WindowAttributes::default().with_title("Factory Game");
+        #[allow(deprecated)]
         let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
         let window_clone = window.clone();
         let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
