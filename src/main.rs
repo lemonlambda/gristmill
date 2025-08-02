@@ -47,13 +47,13 @@ fn main() {
         },
     ];
 
-    let vulkan_info = Arc::new(RwLock::new(VulkanInfo {
+    let vulkan_info = VulkanInfo {
         context,
         framebuffers,
         command_buffer_allocator,
         previous_frame_end,
         vertices,
-    }));
+    };
 
     let mut app = App {
         vulkan_info,
@@ -82,12 +82,12 @@ enum Mode {
     Poll,
 }
 
-struct VulkanInfo {
-    framebuffers: Vec<Arc<Framebuffer>>,
-    context: VulkanContext,
-    command_buffer_allocator: StandardCommandBufferAllocator,
-    previous_frame_end: Option<Box<(dyn GpuFuture + 'static)>>,
-    vertices: Vec<MyVertex>,
+pub struct VulkanInfo {
+    pub framebuffers: Vec<Arc<Framebuffer>>,
+    pub context: VulkanContext,
+    pub command_buffer_allocator: StandardCommandBufferAllocator,
+    pub previous_frame_end: Option<Box<(dyn GpuFuture + 'static)>>,
+    pub vertices: Vec<MyVertex>,
 }
 
 struct App {
@@ -98,7 +98,7 @@ struct App {
     close_requested: bool,
     window: Option<Window>,
 
-    vulkan_info: Arc<RwLock<VulkanInfo>>,
+    vulkan_info: VulkanInfo,
 
     first: bool,
 }
@@ -135,40 +135,38 @@ impl ApplicationHandler for App {
             _ => (),
         }
 
-        let mut vk_info_locked = self.vulkan_info.write().unwrap();
         if self.first {
-            vk_info_locked.vertices.push(MyVertex {
+            self.vulkan_info.vertices.push(MyVertex {
                 position: [-0.75, -0.75],
                 color: [0.0, 0.0, 1.0],
             });
-            vk_info_locked.vertices.push(MyVertex {
+            self.vulkan_info.vertices.push(MyVertex {
                 position: [0.75, -0.75],
                 color: [0.0, 1.0, 0.0],
             });
-            vk_info_locked.vertices.push(MyVertex {
+            self.vulkan_info.vertices.push(MyVertex {
                 position: [0.75, 0.75],
                 color: [1.0, 0.0, 0.0],
             });
 
-            vk_info_locked
-                .context
-                .update_vertices(&vk_info_locked.vertices);
+            let vertices = self.vulkan_info.vertices.clone();
+
+            self.vulkan_info.context.update_vertices(&vertices);
 
             self.first = false
         }
 
-        vk_info_locked.context.viewport.offset[0] += 0.01;
+        self.vulkan_info.context.viewport.offset[0] += 0.01;
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         if self.request_redraw && !self.wait_cancelled && !self.close_requested {
-            let vk_info_locked = self.vulkan_info.write().unwrap();
-            vk_info_locked.context.handle_redraw_events_cleared(
-                vk_info_locked.context.window.clone(), // `surface` must come from a `Window`
-                &vk_info_locked.command_buffer_allocator,
-                &mut vk_info_locked.previous_frame_end,
-                &mut vk_info_locked.recreate_swapchain,
-                &mut vk_info_locked.framebuffers,
+            self.vulkan_info.context.handle_redraw_events_cleared(
+                self.vulkan_info.context.window.clone(), // `surface` must come from a `Window`
+                &self.vulkan_info.command_buffer_allocator,
+                &mut self.vulkan_info.previous_frame_end,
+                &mut self.recreate_swapchain,
+                &mut self.vulkan_info.framebuffers,
             );
         }
 

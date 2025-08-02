@@ -33,6 +33,7 @@ use vulkano::{
     sync::{self, GpuFuture},
 };
 use winit::event_loop::ActiveEventLoop;
+use winit::raw_window_handle::HasRawWindowHandle;
 use winit::{
     event_loop::EventLoop,
     window::{Window, WindowAttributes},
