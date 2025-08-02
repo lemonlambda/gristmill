@@ -116,6 +116,45 @@ struct App {
     first: bool,
 }
 
+impl App {
+    fn on_first(&mut self) {
+        self.vulkan_info.vertices.push(MyVertex {
+            position: [-0.75, -0.75],
+            color: [0.0, 0.0, 1.0],
+        });
+        self.vulkan_info.vertices.push(MyVertex {
+            position: [0.75, -0.75],
+            color: [0.0, 1.0, 0.0],
+        });
+        self.vulkan_info.vertices.push(MyVertex {
+            position: [0.75, 0.75],
+            color: [1.0, 0.0, 0.0],
+        });
+
+        let vertices = self.vulkan_info.vertices.clone();
+
+        self.vulkan_info.context.update_vertices(&vertices);
+    }
+
+    fn on_run(&mut self) {
+        // self.vulkan_info.context.viewport.offset[0] += 5.0;
+        println!("{:#?}", self.keys_down);
+
+        if self.keys_down.w {
+            self.vulkan_info.context.viewport.offset[1] -= 5.0;
+        }
+        if self.keys_down.s {
+            self.vulkan_info.context.viewport.offset[1] += 5.0;
+        }
+        if self.keys_down.a {
+            self.vulkan_info.context.viewport.offset[0] -= 5.0;
+        }
+        if self.keys_down.d {
+            self.vulkan_info.context.viewport.offset[0] += 5.0;
+        }
+    }
+}
+
 impl ApplicationHandler for App {
     fn new_events(&mut self, _event_loop: &ActiveEventLoop, cause: StartCause) {
         // info!("new_events: {cause:?}");
@@ -175,22 +214,7 @@ impl ApplicationHandler for App {
         }
 
         if self.first {
-            self.vulkan_info.vertices.push(MyVertex {
-                position: [-0.75, -0.75],
-                color: [0.0, 0.0, 1.0],
-            });
-            self.vulkan_info.vertices.push(MyVertex {
-                position: [0.75, -0.75],
-                color: [0.0, 1.0, 0.0],
-            });
-            self.vulkan_info.vertices.push(MyVertex {
-                position: [0.75, 0.75],
-                color: [1.0, 0.0, 0.0],
-            });
-
-            let vertices = self.vulkan_info.vertices.clone();
-
-            self.vulkan_info.context.update_vertices(&vertices);
+            self.on_first();
 
             self.first = false
         }
@@ -221,21 +245,7 @@ impl ApplicationHandler for App {
             }
         };
 
-        // self.vulkan_info.context.viewport.offset[0] += 5.0;
-        println!("{:#?}", self.keys_down);
-
-        if self.keys_down.w {
-            self.vulkan_info.context.viewport.offset[1] -= 5.0;
-        }
-        if self.keys_down.s {
-            self.vulkan_info.context.viewport.offset[1] += 5.0;
-        }
-        if self.keys_down.a {
-            self.vulkan_info.context.viewport.offset[0] -= 5.0;
-        }
-        if self.keys_down.d {
-            self.vulkan_info.context.viewport.offset[0] += 5.0;
-        }
+        self.on_run();
 
         if self.close_requested {
             event_loop.exit();
