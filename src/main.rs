@@ -71,14 +71,14 @@ fn main() {
     event_loop.run_app(&mut app).unwrap()
 }
 
-const WAIT_TIME: time::Duration = time::Duration::from_millis(100);
-const POLL_SLEEP_TIME: time::Duration = time::Duration::from_millis(100);
+const WAIT_TIME: time::Duration = time::Duration::from_millis(1000 / 60);
+const POLL_SLEEP_TIME: time::Duration = time::Duration::from_millis(1000 / 60);
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
-    #[default]
     Wait,
     WaitUntil,
+    #[default]
     Poll,
 }
 
@@ -155,8 +155,6 @@ impl ApplicationHandler for App {
 
             self.first = false
         }
-
-        self.vulkan_info.context.viewport.offset[0] += 0.01;
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
@@ -183,6 +181,8 @@ impl ApplicationHandler for App {
                 event_loop.set_control_flow(ControlFlow::Poll);
             }
         };
+
+        self.vulkan_info.context.viewport.offset[0] += 5.0;
 
         if self.close_requested {
             event_loop.exit();
