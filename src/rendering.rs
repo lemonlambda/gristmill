@@ -4,7 +4,7 @@ use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
         AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo, SubpassBeginInfo,
-        SubpassContents, allocator::StandardCommandBufferAllocator,
+        allocator::StandardCommandBufferAllocator,
     },
     device::{
         Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo, QueueFlags,
@@ -32,10 +32,10 @@ use vulkano::{
     },
     sync::{self, GpuFuture},
 };
+use winit::event_loop::ActiveEventLoop;
 use winit::{
-    event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    window::{Window, WindowBuilder},
+    event_loop::EventLoop,
+    window::{Window, WindowAttributes},
 };
 
 // The next step is to create the shaders.
@@ -89,8 +89,9 @@ mod fs {
     }
 }
 
+#[derive(Debug)]
 pub struct VulkanContext {
-    pub instance: Arc<Instance>,
+    pub _instance: Arc<Instance>,
     pub device: Arc<Device>,
     pub queue: Arc<Queue>,
     pub window: Arc<Window>,
@@ -117,7 +118,8 @@ impl VulkanContext {
         )
         .unwrap();
 
-        let window = Arc::new(WindowBuilder::new().build(event_loop).unwrap());
+        let window_attributes = WindowAttributes::default().with_title("Factory Game");
+        let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
         let window_clone = window.clone();
         let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
 
@@ -290,8 +292,8 @@ impl VulkanContext {
             depth_range: 0.0..=1.0,
         };
 
-        VulkanContext {
-            instance,
+        Self {
+            _instance: instance,
             device,
             queue,
             window: window_clone,
@@ -407,6 +409,23 @@ impl VulkanContext {
             }
         }
     }
+
+    pub fn update_vertices(&mut self, vertices: &[MyVertex]) {
+        self.vertex_buffer = Buffer::from_iter(
+            self.memory_allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            vertices.to_vec(),
+        )
+        .expect("Failed to update vertex buffer");
+    }
 }
 
 /// This function is called once during initialization, then again whenever the window is resized.
@@ -437,11 +456,11 @@ pub fn window_size_dependent_setup(
 // We now create a buffer that will store the shape of our triangle. We use `#[repr(C)]` here
 // to force rustc to use a defined layout for our data, as the default representation has *no
 // guarantees*.
-#[derive(BufferContents, Vertex)]
+#[derive(BufferContents, Vertex, Clone, Debug)]
 #[repr(C)]
-struct MyVertex {
+pub struct MyVertex {
     #[format(R32G32_SFLOAT)]
-    position: [f32; 2],
+    pub position: [f32; 2],
     #[format(R32G32B32_SFLOAT)]
-    color: [f32; 3],
+    pub color: [f32; 3],
 }
