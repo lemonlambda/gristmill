@@ -37,6 +37,7 @@
             xorg.libXcursor
             xorg.libXi
             xorg.libXrandr
+            SDL2
           ];
 
           LD_LIBRARY_PATH = lib.makeLibraryPath buildInputs;
