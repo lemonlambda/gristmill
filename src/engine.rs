@@ -13,6 +13,8 @@ use crate::engine::vulkan::VulkanProperties;
 pub mod vulkan;
 
 pub struct Engine {
+    application_name: String,
+
     frame_number: u64,
     stop_rendering: bool,
 
@@ -23,14 +25,18 @@ pub struct Engine {
 
 impl Engine {
     pub fn new() -> Result<Self> {
+        let application_name = String::from("tringl");
+
         let mut vulkan_properties = VulkanProperties::new()?;
-        vulkan_properties.init_vulkan()?;
+        vulkan_properties.init_vulkan(application_name.clone())?;
 
         Ok(Self {
+            application_name: application_name.clone(),
+
             frame_number: 0,
             stop_rendering: false,
 
-            window_handler: WindowHandler::new("tringl", [1920, 1080]),
+            window_handler: WindowHandler::new(application_name.as_str(), [1920, 1080]),
 
             vulkan: vulkan_properties,
         })
