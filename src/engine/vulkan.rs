@@ -31,7 +31,7 @@ impl VulkanProperties {
     }
 
     /// Tries to pick the best physical device
-    fn pick_best_physical_device(&mut self) -> Arc<PhysicalDevice> {
+    fn pick_best_physical_device(&self) -> Arc<PhysicalDevice> {
         let mut physical_devices = self
             .instance
             .enumerate_physical_devices()
@@ -56,15 +56,17 @@ impl VulkanProperties {
 
     /// Initializes the vulkan library from a blank VulkanProperties
     pub fn init_vulkan<S: ToString>(&mut self, application_name: S) -> Result<()> {
-        *self.instance = Instance::new(
+        let instance = Instance::new(
             self.library.clone(),
             InstanceCreateInfo {
                 application_name: Some(application_name.to_string()),
                 ..Default::default()
             },
         )?;
+        self.instance.init(instance);
 
-        *self.physical_device = self.pick_best_physical_device();
+        let physical_device = self.pick_best_physical_device();
+        self.physical_device.init(physical_device);
 
         Ok(())
     }
