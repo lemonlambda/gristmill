@@ -5,7 +5,4 @@ use anyhow::Result;
 mod engine;
 mod init;
 
-fn main() -> Result<()> {
-    Engine::new()?.run();
-    Ok(())
-}
+fn main() -> Result<()> {}
