@@ -16,7 +16,7 @@
       in {
         devShells.default = with pkgs; mkShell rec {
           buildInputs = [
-            (rust-bin.stable.latest.minimal.override {
+            (rust-bin.nightly.latest.minimal.override {
               extensions = [ "clippy" "rust-analyzer" "rust-docs" "rust-src" ];
             })
             # We use nightly rustfmt features.

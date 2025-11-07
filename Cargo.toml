@@ -5,7 +5,12 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.99"
+cgmath = "0.18.0"
 image = "0.25.6"
+log = "0.4.28"
+pretty_env_logger = "0.5.0"
+thiserror = "2.0.17"
+tobj = { version = "4.0.3", features = ["log"] }
 tracing = "0.1.41"
-vulkanalia = { version = "0.32.0", features = ["window"] }
-winit = "0.30.12"
+vulkanalia = { version = "0.32.0", features = ["libloading", "window"] }
+winit = "0.29"
