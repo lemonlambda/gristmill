@@ -1,4 +1,5 @@
 use anyhow::Result;
+use log::info;
 use winit::event::{Event, WindowEvent};
 use winit::window::{Window, WindowBuilder};
 use winit::{dpi::LogicalSize, event_loop::EventLoop};
@@ -20,6 +21,7 @@ impl Engine {
             .with_title("Factory Game")
             .with_inner_size(LogicalSize::new(1024, 768))
             .build(&event_loop)?;
+        info!("Creating vulkan app");
         let vulkan_app = unsafe { VulkanApp::create(&window)? };
 
         Ok(Self {
