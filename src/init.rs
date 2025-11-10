@@ -1,7 +1,6 @@
 use std::{
     mem::MaybeUninit,
     ops::{Deref, DerefMut},
-    ptr::NonNull,
 };
 
 /// Struct to have variables be uninitialized at first and then initialized later

@@ -23,7 +23,7 @@ fn main() -> Result<()> {
 
     pretty_env_logger::init();
 
-    let mut engine = Engine::new()?;
+    let engine = Engine::new()?;
 
     engine.run()?;
 

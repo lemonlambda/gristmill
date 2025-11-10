@@ -9,7 +9,7 @@ use vulkanalia::{
     Device, Entry, Instance, Version,
     loader::{LIBRARY, LibloadingLoader},
     vk::{
-        self, ApplicationInfo, Bool32, DebugUtilsMessageSeverityFlagsEXT,
+        ApplicationInfo, Bool32, DebugUtilsMessageSeverityFlagsEXT,
         DebugUtilsMessageTypeFlagsEXT, DebugUtilsMessengerCallbackDataEXT,
         DebugUtilsMessengerCreateInfoEXT, DebugUtilsMessengerEXT, DeviceCreateInfo,
         DeviceQueueCreateInfo, DeviceV1_0, EXT_DEBUG_UTILS_EXTENSION, EntryV1_0,
@@ -209,7 +209,7 @@ impl VulkanApp {
         Ok(())
     }
 
-    pub unsafe fn render(&mut self, window: &Window) -> Result<()> {
+    pub unsafe fn render(&mut self, _window: &Window) -> Result<()> {
         Ok(())
     }
 
@@ -274,7 +274,7 @@ struct QueueFamilyIndices {
 impl QueueFamilyIndices {
     unsafe fn get(
         instance: &Instance,
-        data: &VulkanData,
+        _data: &VulkanData,
         physical_device: PhysicalDevice,
     ) -> Result<Self> {
         let properties =
