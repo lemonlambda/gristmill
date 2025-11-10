@@ -151,39 +151,38 @@ impl VulkanApp {
     }
 
     pub unsafe fn render(&mut self, window: &Window) -> Result<()> {
+        debug!("Rendering");
+        let in_flight_fence = self.data.in_flight_fences[self.frame];
+
         (unsafe {
             self.device
-                .wait_for_fences(&[self.data.in_flight_fences[self.frame]], true, u64::MAX)
+                .wait_for_fences(&[in_flight_fence], true, u64::MAX)
         })?;
 
         let result = unsafe {
             self.device.acquire_next_image_khr(
                 self.data.swapchain,
                 u64::MAX,
-                self.data.image_available_semaphores[self.frame],
+                self.data.image_available_semaphore[self.frame],
                 Fence::null(),
             )
         };
 
         let image_index = match result {
             Ok((image_index, _)) => image_index as usize,
-            Err(ErrorCode::OUT_OF_DATE_KHR) => {
-                return unsafe { self.recreate_swapchain(window) };
-            }
+            Err(ErrorCode::OUT_OF_DATE_KHR) => return unsafe { self.recreate_swapchain(window) },
             Err(e) => return Err(anyhow!(e)),
         };
 
-        if !self.data.images_in_flight[image_index as usize].is_null() {
+        let image_in_flight = self.data.images_in_flight[image_index];
+        if !image_in_flight.is_null() {
             (unsafe {
-                self.device.wait_for_fences(
-                    &[self.data.images_in_flight[image_index as usize]],
-                    true,
-                    u64::MAX,
-                )
+                self.device
+                    .wait_for_fences(&[image_in_flight], true, u64::MAX)
             })?;
         }
 
-        self.data.images_in_flight[image_index as usize] = self.data.in_flight_fences[self.frame];
+        self.data.images_in_flight[image_index] = in_flight_fence;
 
         let wait_semaphores = &[self.data.image_available_semaphore[self.frame]];
         let wait_stages = &[PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
@@ -195,14 +194,11 @@ impl VulkanApp {
             .command_buffers(command_buffers)
             .signal_semaphores(signal_semaphores);
 
-        (unsafe {
-            self.device
-                .reset_fences(&[self.data.in_flight_fences[self.frame]])
-        })?;
+        (unsafe { self.device.reset_fences(&[in_flight_fence]) })?;
 
         (unsafe {
             self.device
-                .queue_submit(self.data.graphics_queue, &[submit_info], Fence::null())
+                .queue_submit(self.data.graphics_queue, &[submit_info], in_flight_fence)
         })?;
 
         let swapchains = &[self.data.swapchain];
@@ -216,22 +212,14 @@ impl VulkanApp {
             self.device
                 .queue_present_khr(self.data.present_queue, &present_info)
         };
-
         let changed =
             result == Ok(SuccessCode::SUBOPTIMAL_KHR) || result == Err(ErrorCode::OUT_OF_DATE_KHR);
-
         if self.resized || changed {
             self.resized = false;
             (unsafe { self.recreate_swapchain(window) })?;
         } else if let Err(e) = result {
             return Err(anyhow!(e));
         }
-
-        (unsafe {
-            self.device
-                .queue_present_khr(self.data.present_queue, &present_info)
-        })?;
-        (unsafe { self.device.queue_wait_idle(self.data.present_queue) })?;
 
         self.frame = (self.frame + 1) % MAX_FRAMES_IN_FLIGHT;
 
@@ -786,6 +774,7 @@ impl VulkanApp {
     }
 
     unsafe fn recreate_swapchain(&mut self, window: &Window) -> Result<()> {
+        debug!("Recreating Swapchain");
         (unsafe { self.device.device_wait_idle() })?;
         unsafe { self.destroy_swapchain() };
         (unsafe { Self::create_swapchain(window, &self.instance, &self.device, &mut self.data) })?;
@@ -801,14 +790,15 @@ impl VulkanApp {
     }
 
     unsafe fn destroy_swapchain(&mut self) {
-        self.data
-            .framebuffers
-            .iter()
-            .for_each(|f| unsafe { self.device.destroy_framebuffer(*f, None) });
+        debug!("Destroying Swapchain");
         unsafe {
             self.device
                 .free_command_buffers(self.data.command_pool, &self.data.command_buffers)
         };
+        self.data
+            .framebuffers
+            .iter()
+            .for_each(|f| unsafe { self.device.destroy_framebuffer(*f, None) });
         unsafe { self.device.destroy_pipeline(self.data.pipeline, None) };
         unsafe {
             self.device
