@@ -6,16 +6,18 @@ use std::{
 };
 use thiserror::Error;
 use vulkanalia::{
-    Entry, Instance, Version,
+    Device, Entry, Instance, Version,
     loader::{LIBRARY, LibloadingLoader},
     vk::{
-        ApplicationInfo, Bool32, DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
-        DebugUtilsMessengerCallbackDataEXT, DebugUtilsMessengerCreateInfoEXT,
-        DebugUtilsMessengerEXT, EXT_DEBUG_UTILS_EXTENSION, EntryV1_0,
+        self, ApplicationInfo, Bool32, DebugUtilsMessageSeverityFlagsEXT,
+        DebugUtilsMessageTypeFlagsEXT, DebugUtilsMessengerCallbackDataEXT,
+        DebugUtilsMessengerCreateInfoEXT, DebugUtilsMessengerEXT, DeviceCreateInfo,
+        DeviceQueueCreateInfo, DeviceV1_0, EXT_DEBUG_UTILS_EXTENSION, EntryV1_0,
         ExtDebugUtilsExtensionInstanceCommands, ExtensionName, FALSE, HasBuilder,
         InstanceCreateFlags, InstanceCreateInfo, InstanceV1_0,
         KHR_GET_PHYSICAL_DEVICE_PROPERTIES2_EXTENSION, KHR_PORTABILITY_ENUMERATION_EXTENSION,
-        PhysicalDevice, PhysicalDeviceType, QueueFlags, TRUE, make_version,
+        PhysicalDevice, PhysicalDeviceFeatures, PhysicalDeviceType, Queue, QueueFlags, TRUE,
+        make_version,
     },
     window::get_required_instance_extensions,
 };
@@ -56,6 +58,7 @@ pub struct SuitabilityError(pub &'static str);
 pub struct VulkanApp {
     entry: Entry,
     instance: Instance,
+    device: Device,
     data: VulkanData,
 }
 
@@ -63,6 +66,7 @@ pub struct VulkanApp {
 pub struct VulkanData {
     messenger: DebugUtilsMessengerEXT,
     physical_device: PhysicalDevice,
+    graphics_queue: Queue,
 }
 
 impl VulkanApp {
@@ -72,9 +76,11 @@ impl VulkanApp {
         let mut data = VulkanData::default();
         let instance = unsafe { Self::create_instance(window, &entry, &mut data) }?;
         unsafe { Self::pick_physical_device(&instance, &mut data)? };
+        let device = unsafe { Self::create_logical_device(&entry, &instance, &mut data) }?;
         Ok(Self {
             entry,
             instance,
+            device,
             data,
         })
     }
@@ -207,6 +213,46 @@ impl VulkanApp {
         Ok(())
     }
 
+    unsafe fn create_logical_device(
+        entry: &Entry,
+        instance: &Instance,
+        data: &mut VulkanData,
+    ) -> Result<Device> {
+        let indices = unsafe { QueueFamilyIndices::get(instance, data, data.physical_device) }?;
+
+        let queue_priorities = &[1.0];
+        let queue_info = DeviceQueueCreateInfo::builder()
+            .queue_family_index(indices.graphics)
+            .queue_priorities(queue_priorities);
+
+        let layers = if VALIDATION_ENABLED {
+            vec![VALIDATION_LAYER.as_ptr()]
+        } else {
+            vec![]
+        };
+
+        let mut extensions = vec![];
+
+        if cfg!(target_os = "macos") && entry.version()? >= PORTABILITY_MACOS_VERSION {
+            // original tutorial used KHR_PORTABILITY_SUBSET_EXTENSION but I can't find that so maybe this is okay?
+            extensions.push(KHR_PORTABILITY_ENUMERATION_EXTENSION.name.as_ptr());
+        }
+
+        let features = PhysicalDeviceFeatures::builder();
+
+        let queue_infos = &[queue_info];
+        let info = DeviceCreateInfo::builder()
+            .queue_create_infos(queue_infos)
+            .enabled_layer_names(&layers)
+            .enabled_extension_names(&extensions)
+            .enabled_features(&features);
+
+        let device = unsafe { instance.create_device(data.physical_device, &info, None) }?;
+        data.graphics_queue = unsafe { device.get_device_queue(indices.graphics, 0) };
+
+        Ok(device)
+    }
+
     pub unsafe fn destroy(&mut self) {
         if VALIDATION_ENABLED {
             unsafe {
@@ -216,6 +262,7 @@ impl VulkanApp {
         }
 
         unsafe { self.instance.destroy_instance(None) }
+        unsafe { self.device.destroy_device(None) };
     }
 }
 
@@ -230,7 +277,8 @@ impl QueueFamilyIndices {
         data: &VulkanData,
         physical_device: PhysicalDevice,
     ) -> Result<Self> {
-        let properties = instance.get_physical_device_queue_family_properties(physical_device);
+        let properties =
+            unsafe { instance.get_physical_device_queue_family_properties(physical_device) };
 
         let graphics = properties
             .iter()
