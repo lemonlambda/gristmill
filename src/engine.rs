@@ -1,6 +1,8 @@
 use anyhow::Result;
 use log::info;
+use vulkanalia::vk::DeviceV1_0;
 use winit::event::{Event, WindowEvent};
+use winit::event_loop::ControlFlow;
 use winit::window::{Window, WindowBuilder};
 use winit::{dpi::LogicalSize, event_loop::EventLoop};
 
@@ -43,7 +45,11 @@ impl Engine {
                     }
                     // Destroy our Vulkan app.
                     WindowEvent::CloseRequested => {
-                        elwt.exit();
+                        destroying = true;
+                        *control_flow = ControlFlow::Exit;
+                        unsafe {
+                            self.vulkan_app.device.device_wait_idle().unwrap();
+                        }
                         unsafe {
                             self.vulkan_app.destroy();
                         }

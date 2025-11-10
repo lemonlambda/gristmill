@@ -21,23 +21,23 @@ use vulkanalia::{
         DebugUtilsMessengerCallbackDataEXT, DebugUtilsMessengerCreateInfoEXT,
         DebugUtilsMessengerEXT, DeviceCreateInfo, DeviceQueueCreateInfo, DeviceV1_0,
         EXT_DEBUG_UTILS_EXTENSION, EntryV1_0, ExtDebugUtilsExtensionInstanceCommands,
-        ExtensionName, Extent2D, FALSE, Fence, Format, Framebuffer, FramebufferCreateInfo,
-        FrontFace, GraphicsPipelineCreateInfo, Handle, HasBuilder, Image, ImageAspectFlags,
-        ImageLayout, ImageSubresourceRange, ImageUsageFlags, ImageView, ImageViewCreateInfo,
-        ImageViewType, InstanceCreateFlags, InstanceCreateInfo, InstanceV1_0,
-        KHR_GET_PHYSICAL_DEVICE_PROPERTIES2_EXTENSION, KHR_PORTABILITY_ENUMERATION_EXTENSION,
-        KHR_SWAPCHAIN_EXTENSION, KhrSurfaceExtensionInstanceCommands,
-        KhrSwapchainExtensionDeviceCommands, LogicOp, Offset2D, PhysicalDevice,
-        PhysicalDeviceFeatures, PhysicalDeviceType, Pipeline, PipelineBindPoint, PipelineCache,
-        PipelineColorBlendAttachmentState, PipelineColorBlendStateCreateInfo,
-        PipelineInputAssemblyStateCreateInfo, PipelineLayout, PipelineLayoutCreateInfo,
-        PipelineMultisampleStateCreateInfo, PipelineRasterizationStateCreateInfo,
-        PipelineShaderStageCreateInfo, PipelineStageFlags, PipelineVertexInputStateCreateInfo,
-        PipelineViewportStateCreateInfo, PolygonMode, PresentInfoKHR, PresentModeKHR,
-        PrimitiveTopology, Queue, QueueFlags, Rect2D, RenderPass, RenderPassBeginInfo,
-        RenderPassCreateInfo, SUBPASS_EXTERNAL, SampleCountFlags, Semaphore, SemaphoreCreateInfo,
-        ShaderModule, ShaderModuleCreateInfo, ShaderStageFlags, SharingMode, SubmitInfo,
-        SubpassContents, SubpassDependency, SubpassDescription, SurfaceCapabilitiesKHR,
+        ExtensionName, Extent2D, FALSE, Fence, FenceCreateFlags, FenceCreateInfo, Format,
+        Framebuffer, FramebufferCreateInfo, FrontFace, GraphicsPipelineCreateInfo, Handle,
+        HasBuilder, Image, ImageAspectFlags, ImageLayout, ImageSubresourceRange, ImageUsageFlags,
+        ImageView, ImageViewCreateInfo, ImageViewType, InstanceCreateFlags, InstanceCreateInfo,
+        InstanceV1_0, KHR_GET_PHYSICAL_DEVICE_PROPERTIES2_EXTENSION,
+        KHR_PORTABILITY_ENUMERATION_EXTENSION, KHR_SWAPCHAIN_EXTENSION,
+        KhrSurfaceExtensionInstanceCommands, KhrSwapchainExtensionDeviceCommands, LogicOp,
+        Offset2D, PhysicalDevice, PhysicalDeviceFeatures, PhysicalDeviceType, Pipeline,
+        PipelineBindPoint, PipelineCache, PipelineColorBlendAttachmentState,
+        PipelineColorBlendStateCreateInfo, PipelineInputAssemblyStateCreateInfo, PipelineLayout,
+        PipelineLayoutCreateInfo, PipelineMultisampleStateCreateInfo,
+        PipelineRasterizationStateCreateInfo, PipelineShaderStageCreateInfo, PipelineStageFlags,
+        PipelineVertexInputStateCreateInfo, PipelineViewportStateCreateInfo, PolygonMode,
+        PresentInfoKHR, PresentModeKHR, PrimitiveTopology, Queue, QueueFlags, Rect2D, RenderPass,
+        RenderPassBeginInfo, RenderPassCreateInfo, SUBPASS_EXTERNAL, SampleCountFlags, Semaphore,
+        SemaphoreCreateInfo, ShaderModule, ShaderModuleCreateInfo, ShaderStageFlags, SharingMode,
+        SubmitInfo, SubpassContents, SubpassDependency, SubpassDescription, SurfaceCapabilitiesKHR,
         SurfaceFormatKHR, SurfaceKHR, SwapchainCreateInfoKHR, SwapchainKHR, TRUE, Viewport,
         make_version,
     },
@@ -51,6 +51,8 @@ const VALIDATION_ENABLED: bool = cfg!(debug_assertions);
 const VALIDATION_LAYER: ExtensionName = ExtensionName::from_bytes(b"VK_LAYER_KHRONOS_validation");
 
 const DEVICE_EXTENSIONS: &[ExtensionName] = &[KHR_SWAPCHAIN_EXTENSION.name];
+
+const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
 extern "system" fn debug_callback(
     severity: DebugUtilsMessageSeverityFlagsEXT,
@@ -80,10 +82,11 @@ pub struct SuitabilityError(pub &'static str);
 
 #[derive(Clone, Debug)]
 pub struct VulkanApp {
-    entry: Entry,
-    instance: Instance,
-    device: Device,
-    data: VulkanData,
+    pub entry: Entry,
+    pub instance: Instance,
+    pub device: Device,
+    pub data: VulkanData,
+    pub frame: usize,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -104,8 +107,10 @@ pub struct VulkanData {
     framebuffers: Vec<Framebuffer>,
     command_pool: CommandPool,
     command_buffers: Vec<CommandBuffer>,
-    image_available_semaphore: Semaphore,
-    render_finished_semaphore: Semaphore,
+    image_available_semaphore: Vec<Semaphore>,
+    render_finished_semaphore: Vec<Semaphore>,
+    in_flight_fences: Vec<Fence>,
+    images_in_flight: Vec<Fence>,
 }
 
 impl VulkanApp {
@@ -143,25 +148,47 @@ impl VulkanApp {
     }
 
     pub unsafe fn render(&mut self, _window: &Window) -> Result<()> {
+        (unsafe {
+            self.device
+                .wait_for_fences(&[self.data.in_flight_fences[self.frame]], true, u64::MAX)
+        })?;
+
         let image_index = unsafe {
             self.device.acquire_next_image_khr(
                 self.data.swapchain,
                 u64::MAX,
-                self.data.image_available_semaphore,
+                self.data.image_available_semaphore[self.frame],
                 Fence::null(),
             )
         }?
         .0 as usize;
 
-        let wait_semaphores = &[self.data.image_available_semaphore];
+        if !self.data.images_in_flight[image_index as usize].is_null() {
+            (unsafe {
+                self.device.wait_for_fences(
+                    &[self.data.images_in_flight[image_index as usize]],
+                    true,
+                    u64::MAX,
+                )
+            })?;
+        }
+
+        self.data.images_in_flight[image_index as usize] = self.data.in_flight_fences[self.frame];
+
+        let wait_semaphores = &[self.data.image_available_semaphore[self.frame]];
         let wait_stages = &[PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
         let command_buffers = &[self.data.command_buffers[image_index]];
-        let signal_semaphores = &[self.data.render_finished_semaphore];
+        let signal_semaphores = &[self.data.render_finished_semaphore[self.frame]];
         let submit_info = SubmitInfo::builder()
             .wait_semaphores(wait_semaphores)
             .wait_dst_stage_mask(wait_stages)
             .command_buffers(command_buffers)
             .signal_semaphores(signal_semaphores);
+
+        (unsafe {
+            self.device
+                .reset_fences(&[self.data.in_flight_fences[self.frame]])
+        })?;
 
         (unsafe {
             self.device
@@ -179,6 +206,14 @@ impl VulkanApp {
             self.device
                 .queue_present_khr(self.data.present_queue, &present_info)
         })?;
+
+        (unsafe {
+            self.device
+                .queue_present_khr(self.data.present_queue, &present_info)
+        })?;
+        (unsafe { self.device.queue_wait_idle(self.data.present_queue) })?;
+
+        self.frame = (self.frame + 1) % MAX_FRAMES_IN_FLIGHT;
 
         Ok(())
     }
@@ -707,11 +742,25 @@ impl VulkanApp {
         Ok(())
     }
 
-    fn create_sync_objects(device: &Device, data: &mut VulkanData) -> Result<()> {
+    unsafe fn create_sync_objects(device: &Device, data: &mut VulkanData) -> Result<()> {
         let semaphore_info = SemaphoreCreateInfo::builder();
+        let fence_info = FenceCreateInfo::builder().flags(FenceCreateFlags::SIGNALED);
 
-        data.image_available_semaphore = unsafe { device.create_semaphore(&semaphore_info, None) }?;
-        data.render_finished_semaphore = unsafe { device.create_semaphore(&semaphore_info, None) }?;
+        for _ in 0..MAX_FRAMES_IN_FLIGHT {
+            data.image_available_semaphore
+                .push(unsafe { device.create_semaphore(&semaphore_info, None) }?);
+            data.render_finished_semaphore
+                .push(unsafe { device.create_semaphore(&semaphore_info, None) }?);
+
+            data.in_flight_fences
+                .push(unsafe { device.create_fence(&fence_info, None) }?);
+        }
+
+        data.images_in_flight = data
+            .swapchain_images
+            .iter()
+            .map(|_| Fence::null())
+            .collect();
 
         Ok(())
     }
@@ -747,10 +796,18 @@ impl VulkanApp {
         unsafe {
             self.device
                 .destroy_command_pool(self.data.command_pool, None);
-            self.device
-                .destroy_semaphore(self.data.render_finished_semaphore, None);
-            self.device
-                .destroy_semaphore(self.data.image_available_semaphore, None);
+            self.data
+                .render_finished_semaphore
+                .iter()
+                .for_each(|s| self.device.destroy_semaphore(*s, None));
+            self.data
+                .image_available_semaphore
+                .iter()
+                .for_each(|s| self.device.destroy_semaphore(*s, None));
+            self.data
+                .in_flight_fences
+                .iter()
+                .for_each(|f| self.device.destroy_fence(*f, None));
         };
     }
 }
