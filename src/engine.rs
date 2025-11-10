@@ -8,6 +8,7 @@ use winit::{dpi::LogicalSize, event_loop::EventLoop};
 
 use crate::engine::vulkan::VulkanApp;
 
+mod vertex;
 mod vulkan;
 
 pub struct Engine {

@@ -4,6 +4,7 @@ use log::*;
 use std::{
     collections::HashSet,
     ffi::{CStr, c_void},
+    intrinsics::copy_nonoverlapping,
 };
 use thiserror::Error;
 use vulkanalia::{
@@ -12,38 +13,42 @@ use vulkanalia::{
     loader::{LIBRARY, LibloadingLoader},
     vk::{
         AccessFlags, ApplicationInfo, AttachmentDescription, AttachmentLoadOp, AttachmentReference,
-        AttachmentStoreOp, BlendFactor, BlendOp, Bool32, ClearColorValue, ClearValue,
-        ColorComponentFlags, ColorSpaceKHR, CommandBuffer, CommandBufferAllocateInfo,
-        CommandBufferBeginInfo, CommandBufferInheritanceInfo, CommandBufferLevel,
-        CommandBufferUsageFlags, CommandPool, CommandPoolCreateFlags, CommandPoolCreateInfo,
-        ComponentMapping, ComponentSwizzle, CompositeAlphaFlagsKHR, CullModeFlags,
-        DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
-        DebugUtilsMessengerCallbackDataEXT, DebugUtilsMessengerCreateInfoEXT,
-        DebugUtilsMessengerEXT, DeviceCreateInfo, DeviceQueueCreateInfo, DeviceV1_0,
-        EXT_DEBUG_UTILS_EXTENSION, EntryV1_0, ErrorCode, ExtDebugUtilsExtensionInstanceCommands,
-        ExtensionName, Extent2D, FALSE, Fence, FenceCreateFlags, FenceCreateInfo, Format,
-        Framebuffer, FramebufferCreateInfo, FrontFace, GraphicsPipelineCreateInfo, Handle,
-        HasBuilder, Image, ImageAspectFlags, ImageLayout, ImageSubresourceRange, ImageUsageFlags,
-        ImageView, ImageViewCreateInfo, ImageViewType, InstanceCreateFlags, InstanceCreateInfo,
-        InstanceV1_0, KHR_GET_PHYSICAL_DEVICE_PROPERTIES2_EXTENSION,
-        KHR_PORTABILITY_ENUMERATION_EXTENSION, KHR_SWAPCHAIN_EXTENSION,
-        KhrSurfaceExtensionInstanceCommands, KhrSwapchainExtensionDeviceCommands, LogicOp,
-        Offset2D, PhysicalDevice, PhysicalDeviceFeatures, PhysicalDeviceType, Pipeline,
-        PipelineBindPoint, PipelineCache, PipelineColorBlendAttachmentState,
-        PipelineColorBlendStateCreateInfo, PipelineInputAssemblyStateCreateInfo, PipelineLayout,
-        PipelineLayoutCreateInfo, PipelineMultisampleStateCreateInfo,
-        PipelineRasterizationStateCreateInfo, PipelineShaderStageCreateInfo, PipelineStageFlags,
-        PipelineVertexInputStateCreateInfo, PipelineViewportStateCreateInfo, PolygonMode,
-        PresentInfoKHR, PresentModeKHR, PrimitiveTopology, Queue, QueueFlags, Rect2D, RenderPass,
-        RenderPassBeginInfo, RenderPassCreateInfo, SUBPASS_EXTERNAL, SampleCountFlags, Semaphore,
-        SemaphoreCreateInfo, ShaderModule, ShaderModuleCreateInfo, ShaderStageFlags, SharingMode,
-        SubmitInfo, SubpassContents, SubpassDependency, SubpassDescription, SuccessCode,
+        AttachmentStoreOp, BlendFactor, BlendOp, Bool32, Buffer, BufferCreateFlags,
+        BufferCreateInfo, BufferUsageFlags, ClearColorValue, ClearValue, ColorComponentFlags,
+        ColorSpaceKHR, CommandBuffer, CommandBufferAllocateInfo, CommandBufferBeginInfo,
+        CommandBufferInheritanceInfo, CommandBufferLevel, CommandBufferUsageFlags, CommandPool,
+        CommandPoolCreateFlags, CommandPoolCreateInfo, ComponentMapping, ComponentSwizzle,
+        CompositeAlphaFlagsKHR, CullModeFlags, DebugUtilsMessageSeverityFlagsEXT,
+        DebugUtilsMessageTypeFlagsEXT, DebugUtilsMessengerCallbackDataEXT,
+        DebugUtilsMessengerCreateInfoEXT, DebugUtilsMessengerEXT, DeviceCreateInfo, DeviceMemory,
+        DeviceQueueCreateInfo, DeviceV1_0, EXT_DEBUG_UTILS_EXTENSION, EntryV1_0, ErrorCode,
+        ExtDebugUtilsExtensionInstanceCommands, ExtensionName, Extent2D, FALSE, Fence,
+        FenceCreateFlags, FenceCreateInfo, Format, Framebuffer, FramebufferCreateInfo, FrontFace,
+        GraphicsPipelineCreateInfo, Handle, HasBuilder, Image, ImageAspectFlags, ImageLayout,
+        ImageSubresourceRange, ImageUsageFlags, ImageView, ImageViewCreateInfo, ImageViewType,
+        InstanceCreateFlags, InstanceCreateInfo, InstanceV1_0,
+        KHR_GET_PHYSICAL_DEVICE_PROPERTIES2_EXTENSION, KHR_PORTABILITY_ENUMERATION_EXTENSION,
+        KHR_SWAPCHAIN_EXTENSION, KhrSurfaceExtensionInstanceCommands,
+        KhrSwapchainExtensionDeviceCommands, LogicOp, MemoryAllocateInfo, MemoryMapFlags,
+        MemoryPropertyFlags, MemoryRequirements, Offset2D, PhysicalDevice, PhysicalDeviceFeatures,
+        PhysicalDeviceType, Pipeline, PipelineBindPoint, PipelineCache,
+        PipelineColorBlendAttachmentState, PipelineColorBlendStateCreateInfo,
+        PipelineInputAssemblyStateCreateInfo, PipelineLayout, PipelineLayoutCreateInfo,
+        PipelineMultisampleStateCreateInfo, PipelineRasterizationStateCreateInfo,
+        PipelineShaderStageCreateInfo, PipelineStageFlags, PipelineVertexInputStateCreateInfo,
+        PipelineViewportStateCreateInfo, PolygonMode, PresentInfoKHR, PresentModeKHR,
+        PrimitiveTopology, Queue, QueueFlags, Rect2D, RenderPass, RenderPassBeginInfo,
+        RenderPassCreateInfo, SUBPASS_EXTERNAL, SampleCountFlags, Semaphore, SemaphoreCreateInfo,
+        ShaderModule, ShaderModuleCreateInfo, ShaderStageFlags, SharingMode, SubmitInfo,
+        SubpassContents, SubpassDependency, SubpassDescription, SuccessCode,
         SurfaceCapabilitiesKHR, SurfaceFormatKHR, SurfaceKHR, SwapchainCreateInfoKHR, SwapchainKHR,
         TRUE, Viewport, make_version,
     },
     window::{create_surface, get_required_instance_extensions},
 };
 use winit::window::Window;
+
+use crate::engine::vertex::{VERTICES, Vertex};
 
 const PORTABILITY_MACOS_VERSION: Version = Version::new(1, 3, 216);
 
@@ -112,42 +117,39 @@ pub struct VulkanData {
     render_finished_semaphore: Vec<Semaphore>,
     in_flight_fences: Vec<Fence>,
     images_in_flight: Vec<Fence>,
+    vertex_buffer: Buffer,
+    vertex_buffer_memory: DeviceMemory,
 }
 
 impl VulkanApp {
     pub unsafe fn create(window: &Window) -> Result<Self> {
-        let loader = unsafe { LibloadingLoader::new(LIBRARY)? };
-        let entry = unsafe { Entry::new(loader).map_err(|b| anyhow!("{}", b))? };
-        let mut data = VulkanData::default();
-        let instance = unsafe { Self::create_instance(window, &entry, &mut data) }?;
-        data.surface = unsafe { create_surface(&instance, &window, &window) }?;
-        unsafe { Self::pick_physical_device(&instance, &mut data)? };
-        let device = unsafe { Self::create_logical_device(&entry, &instance, &mut data) }?;
-        unsafe { Self::create_swapchain(window, &instance, &device, &mut data) }?;
-        unsafe { Self::create_swapchain_image_views(&device, &mut data) }?;
-        unsafe { Self::create_render_pass(&instance, &device, &mut data)? };
-        unsafe { Self::create_pipeline(&device, &mut data) }?;
         unsafe {
+            let loader = LibloadingLoader::new(LIBRARY)?;
+            let entry = Entry::new(loader).map_err(|b| anyhow!("{}", b))?;
+            let mut data = VulkanData::default();
+            let instance = Self::create_instance(window, &entry, &mut data)?;
+            data.surface = create_surface(&instance, &window, &window)?;
+            Self::pick_physical_device(&instance, &mut data)?;
+            let device = Self::create_logical_device(&entry, &instance, &mut data)?;
+            Self::create_swapchain(window, &instance, &device, &mut data)?;
+            Self::create_swapchain_image_views(&device, &mut data)?;
+            Self::create_render_pass(&instance, &device, &mut data)?;
+            Self::create_pipeline(&device, &mut data)?;
             Self::create_framebuffers(&device, &mut data)?;
-        }
-        unsafe {
             Self::create_command_pool(&instance, &device, &mut data)?;
-        }
-        unsafe {
+            Self::create_vertex_buffer(&instance, &device, &mut data)?;
             Self::create_command_buffers(&device, &mut data)?;
-        }
-        unsafe {
             Self::create_sync_objects(&device, &mut data)?;
+            info!("Woo created everything, hard work ain't it?");
+            Ok(Self {
+                entry,
+                instance,
+                device,
+                data,
+                frame: 0,
+                resized: false,
+            })
         }
-        info!("Woo created everything, hard work ain't it?");
-        Ok(Self {
-            entry,
-            instance,
-            device,
-            data,
-            frame: 0,
-            resized: false,
-        })
     }
 
     pub unsafe fn render(&mut self, window: &Window) -> Result<()> {
@@ -529,7 +531,11 @@ impl VulkanApp {
             .module(frag_shader_module)
             .name(b"main\0");
 
-        let vertex_input_state = PipelineVertexInputStateCreateInfo::builder();
+        let binding_descriptions = &[Vertex::binding_description()];
+        let attribute_descriptions = Vertex::attribute_descriptions();
+        let vertex_input_state = PipelineVertexInputStateCreateInfo::builder()
+            .vertex_binding_descriptions(binding_descriptions)
+            .vertex_attribute_descriptions(&attribute_descriptions);
 
         let input_assembly_state = PipelineInputAssemblyStateCreateInfo::builder()
             .topology(PrimitiveTopology::TRIANGLE_LIST)
@@ -741,7 +747,8 @@ impl VulkanApp {
                     PipelineBindPoint::GRAPHICS,
                     data.pipeline,
                 );
-                device.cmd_draw(*command_buffer, 3, 1, 0, 0);
+                device.cmd_bind_vertex_buffers(*command_buffer, 0, &[data.vertex_buffer], &[0]);
+                device.cmd_draw(*command_buffer, VERTICES.len() as u32, 1, 0, 0);
                 device.cmd_end_render_pass(*command_buffer);
                 device.end_command_buffer(*command_buffer)?;
             };
@@ -812,37 +819,82 @@ impl VulkanApp {
         unsafe { self.device.destroy_swapchain_khr(self.data.swapchain, None) };
     }
 
-    pub unsafe fn destroy(&mut self) {
-        if VALIDATION_ENABLED {
-            unsafe {
-                self.instance
-                    .destroy_debug_utils_messenger_ext(self.data.messenger, None)
-            };
-        }
+    unsafe fn create_vertex_buffer(
+        instance: &Instance,
+        device: &Device,
+        data: &mut VulkanData,
+    ) -> Result<()> {
+        let buffer_info = BufferCreateInfo::builder()
+            .size((size_of::<Vertex>() * VERTICES.len()) as u64)
+            .usage(BufferUsageFlags::VERTEX_BUFFER)
+            .sharing_mode(SharingMode::EXCLUSIVE)
+            .flags(BufferCreateFlags::empty()); // Optional.
 
-        unsafe { self.instance.destroy_surface_khr(self.data.surface, None) };
-        unsafe { self.instance.destroy_instance(None) }
-        unsafe { self.device.destroy_device(None) };
+        data.vertex_buffer = unsafe { device.create_buffer(&buffer_info, None) }?;
+
+        let requirements = unsafe { device.get_buffer_memory_requirements(data.vertex_buffer) };
+
+        let memory_info = MemoryAllocateInfo::builder()
+            .allocation_size(requirements.size)
+            .memory_type_index(unsafe {
+                Self::get_memory_type_index(
+                    instance,
+                    data,
+                    MemoryPropertyFlags::HOST_COHERENT | MemoryPropertyFlags::HOST_VISIBLE,
+                    requirements,
+                )
+            }?);
+
+        data.vertex_buffer_memory = unsafe { device.allocate_memory(&memory_info, None) }?;
+
+        (unsafe { device.bind_buffer_memory(data.vertex_buffer, data.vertex_buffer_memory, 0) })?;
+
+        let memory = unsafe {
+            device.map_memory(
+                data.vertex_buffer_memory,
+                0,
+                buffer_info.size,
+                MemoryMapFlags::empty(),
+            )
+        }?;
+
+        unsafe { copy_nonoverlapping(VERTICES.as_ptr(), memory.cast(), VERTICES.len()) };
+
+        unsafe { device.unmap_memory(data.vertex_buffer_memory) };
+
+        Ok(())
+    }
+
+    unsafe fn get_memory_type_index(
+        instance: &Instance,
+        data: &VulkanData,
+        properties: MemoryPropertyFlags,
+        requirements: MemoryRequirements,
+    ) -> Result<u32> {
+        let memory =
+            unsafe { instance.get_physical_device_memory_properties(data.physical_device) };
+        (0..memory.memory_type_count)
+            .find(|i| {
+                let suitable = (requirements.memory_type_bits & (1 << i)) != 0;
+                let memory_type = memory.memory_types[*i as usize];
+                suitable && memory_type.property_flags.contains(properties)
+            })
+            .ok_or_else(|| anyhow!("Failed to find suitable memory type."))
+    }
+
+    pub unsafe fn destroy(&mut self) {
         unsafe {
-            self.device.destroy_swapchain_khr(self.data.swapchain, None);
-        }
-        self.data
-            .swapchain_image_views
-            .iter()
-            .for_each(|v| unsafe { self.device.destroy_image_view(*v, None) });
-        unsafe {
+            self.device.device_wait_idle().unwrap();
+
+            self.destroy_swapchain();
+            self.device.destroy_buffer(self.data.vertex_buffer, None);
             self.device
-                .destroy_pipeline_layout(self.data.pipeline_layout, None)
-        };
-        unsafe { self.device.destroy_render_pass(self.data.render_pass, None) };
-        unsafe { self.device.destroy_pipeline(self.data.pipeline, None) };
-        self.data
-            .framebuffers
-            .iter()
-            .for_each(|f| unsafe { self.device.destroy_framebuffer(*f, None) });
-        unsafe {
-            self.device
-                .destroy_command_pool(self.data.command_pool, None);
+                .free_memory(self.data.vertex_buffer_memory, None);
+
+            self.data
+                .in_flight_fences
+                .iter()
+                .for_each(|f| self.device.destroy_fence(*f, None));
             self.data
                 .render_finished_semaphore
                 .iter()
@@ -851,11 +903,18 @@ impl VulkanApp {
                 .image_available_semaphore
                 .iter()
                 .for_each(|s| self.device.destroy_semaphore(*s, None));
-            self.data
-                .in_flight_fences
-                .iter()
-                .for_each(|f| self.device.destroy_fence(*f, None));
-        };
+            self.device
+                .destroy_command_pool(self.data.command_pool, None);
+            self.device.destroy_device(None);
+            self.instance.destroy_surface_khr(self.data.surface, None);
+
+            if VALIDATION_ENABLED {
+                self.instance
+                    .destroy_debug_utils_messenger_ext(self.data.messenger, None);
+            }
+
+            self.instance.destroy_instance(None);
+        }
     }
 }
 
