@@ -14,6 +14,7 @@ pub struct Engine {
     event_loop: EventLoop<()>,
     window: Window,
     vulkan_app: VulkanApp,
+    minimized: bool,
 }
 
 impl Engine {
@@ -30,6 +31,7 @@ impl Engine {
             event_loop,
             window,
             vulkan_app,
+            minimized: false,
         })
     }
 
@@ -40,16 +42,20 @@ impl Engine {
                 Event::AboutToWait => self.window.request_redraw(),
                 Event::WindowEvent { event, .. } => match event {
                     // Render a frame if our Vulkan app is not being destroyed.
-                    WindowEvent::RedrawRequested if !elwt.exiting() => {
+                    WindowEvent::RedrawRequested if !elwt.exiting() && !self.minimized => {
                         unsafe { self.vulkan_app.render(&self.window) }.unwrap()
+                    }
+                    WindowEvent::Resized(size) => {
+                        if size.width == 0 || size.height == 0 {
+                            self.minimized = true;
+                        } else {
+                            self.minimized = false;
+                            self.vulkan_app.resized = true;
+                        }
                     }
                     // Destroy our Vulkan app.
                     WindowEvent::CloseRequested => {
-                        destroying = true;
-                        *control_flow = ControlFlow::Exit;
-                        unsafe {
-                            self.vulkan_app.device.device_wait_idle().unwrap();
-                        }
+                        elwt.exit();
                         unsafe {
                             self.vulkan_app.destroy();
                         }

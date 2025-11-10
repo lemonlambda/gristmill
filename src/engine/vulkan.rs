@@ -20,7 +20,7 @@ use vulkanalia::{
         DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
         DebugUtilsMessengerCallbackDataEXT, DebugUtilsMessengerCreateInfoEXT,
         DebugUtilsMessengerEXT, DeviceCreateInfo, DeviceQueueCreateInfo, DeviceV1_0,
-        EXT_DEBUG_UTILS_EXTENSION, EntryV1_0, ExtDebugUtilsExtensionInstanceCommands,
+        EXT_DEBUG_UTILS_EXTENSION, EntryV1_0, ErrorCode, ExtDebugUtilsExtensionInstanceCommands,
         ExtensionName, Extent2D, FALSE, Fence, FenceCreateFlags, FenceCreateInfo, Format,
         Framebuffer, FramebufferCreateInfo, FrontFace, GraphicsPipelineCreateInfo, Handle,
         HasBuilder, Image, ImageAspectFlags, ImageLayout, ImageSubresourceRange, ImageUsageFlags,
@@ -37,9 +37,9 @@ use vulkanalia::{
         PresentInfoKHR, PresentModeKHR, PrimitiveTopology, Queue, QueueFlags, Rect2D, RenderPass,
         RenderPassBeginInfo, RenderPassCreateInfo, SUBPASS_EXTERNAL, SampleCountFlags, Semaphore,
         SemaphoreCreateInfo, ShaderModule, ShaderModuleCreateInfo, ShaderStageFlags, SharingMode,
-        SubmitInfo, SubpassContents, SubpassDependency, SubpassDescription, SurfaceCapabilitiesKHR,
-        SurfaceFormatKHR, SurfaceKHR, SwapchainCreateInfoKHR, SwapchainKHR, TRUE, Viewport,
-        make_version,
+        SubmitInfo, SubpassContents, SubpassDependency, SubpassDescription, SuccessCode,
+        SurfaceCapabilitiesKHR, SurfaceFormatKHR, SurfaceKHR, SwapchainCreateInfoKHR, SwapchainKHR,
+        TRUE, Viewport, make_version,
     },
     window::{create_surface, get_required_instance_extensions},
 };
@@ -87,6 +87,7 @@ pub struct VulkanApp {
     pub device: Device,
     pub data: VulkanData,
     pub frame: usize,
+    pub resized: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -144,24 +145,33 @@ impl VulkanApp {
             instance,
             device,
             data,
+            frame: 0,
+            resized: false,
         })
     }
 
-    pub unsafe fn render(&mut self, _window: &Window) -> Result<()> {
+    pub unsafe fn render(&mut self, window: &Window) -> Result<()> {
         (unsafe {
             self.device
                 .wait_for_fences(&[self.data.in_flight_fences[self.frame]], true, u64::MAX)
         })?;
 
-        let image_index = unsafe {
+        let result = unsafe {
             self.device.acquire_next_image_khr(
                 self.data.swapchain,
                 u64::MAX,
-                self.data.image_available_semaphore[self.frame],
+                self.data.image_available_semaphores[self.frame],
                 Fence::null(),
             )
-        }?
-        .0 as usize;
+        };
+
+        let image_index = match result {
+            Ok((image_index, _)) => image_index as usize,
+            Err(ErrorCode::OUT_OF_DATE_KHR) => {
+                return unsafe { self.recreate_swapchain(window) };
+            }
+            Err(e) => return Err(anyhow!(e)),
+        };
 
         if !self.data.images_in_flight[image_index as usize].is_null() {
             (unsafe {
@@ -202,10 +212,20 @@ impl VulkanApp {
             .swapchains(swapchains)
             .image_indices(image_indices);
 
-        (unsafe {
+        let result = unsafe {
             self.device
                 .queue_present_khr(self.data.present_queue, &present_info)
-        })?;
+        };
+
+        let changed =
+            result == Ok(SuccessCode::SUBOPTIMAL_KHR) || result == Err(ErrorCode::OUT_OF_DATE_KHR);
+
+        if self.resized || changed {
+            self.resized = false;
+            (unsafe { self.recreate_swapchain(window) })?;
+        } else if let Err(e) = result {
+            return Err(anyhow!(e));
+        }
 
         (unsafe {
             self.device
@@ -763,6 +783,43 @@ impl VulkanApp {
             .collect();
 
         Ok(())
+    }
+
+    unsafe fn recreate_swapchain(&mut self, window: &Window) -> Result<()> {
+        (unsafe { self.device.device_wait_idle() })?;
+        unsafe { self.destroy_swapchain() };
+        (unsafe { Self::create_swapchain(window, &self.instance, &self.device, &mut self.data) })?;
+        (unsafe { Self::create_swapchain_image_views(&self.device, &mut self.data) })?;
+        (unsafe { Self::create_render_pass(&self.instance, &self.device, &mut self.data) })?;
+        (unsafe { Self::create_pipeline(&self.device, &mut self.data) })?;
+        (unsafe { Self::create_framebuffers(&self.device, &mut self.data) })?;
+        (unsafe { Self::create_command_buffers(&self.device, &mut self.data) })?;
+        self.data
+            .images_in_flight
+            .resize(self.data.swapchain_images.len(), Fence::null());
+        Ok(())
+    }
+
+    unsafe fn destroy_swapchain(&mut self) {
+        self.data
+            .framebuffers
+            .iter()
+            .for_each(|f| unsafe { self.device.destroy_framebuffer(*f, None) });
+        unsafe {
+            self.device
+                .free_command_buffers(self.data.command_pool, &self.data.command_buffers)
+        };
+        unsafe { self.device.destroy_pipeline(self.data.pipeline, None) };
+        unsafe {
+            self.device
+                .destroy_pipeline_layout(self.data.pipeline_layout, None)
+        };
+        unsafe { self.device.destroy_render_pass(self.data.render_pass, None) };
+        self.data
+            .swapchain_image_views
+            .iter()
+            .for_each(|v| unsafe { self.device.destroy_image_view(*v, None) });
+        unsafe { self.device.destroy_swapchain_khr(self.data.swapchain, None) };
     }
 
     pub unsafe fn destroy(&mut self) {
