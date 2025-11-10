@@ -1,4 +1,5 @@
 use anyhow::{Result, anyhow};
+use image::imageops::FilterType::Lanczos3;
 use log::*;
 use std::{
     collections::HashSet,
@@ -7,21 +8,33 @@ use std::{
 use thiserror::Error;
 use vulkanalia::{
     Device, Entry, Instance, Version,
+    bytecode::Bytecode,
     loader::{LIBRARY, LibloadingLoader},
     vk::{
-        ApplicationInfo, Bool32, ColorSpaceKHR, ComponentMapping, ComponentSwizzle,
-        CompositeAlphaFlagsKHR, DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
+        ApplicationInfo, AttachmentDescription, AttachmentLoadOp, AttachmentReference,
+        AttachmentStoreOp, BlendFactor, BlendOp, Bool32, ColorComponentFlags, ColorSpaceKHR,
+        ComponentMapping, ComponentSwizzle, CompositeAlphaFlagsKHR, CullModeFlags,
+        DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
         DebugUtilsMessengerCallbackDataEXT, DebugUtilsMessengerCreateInfoEXT,
         DebugUtilsMessengerEXT, DeviceCreateInfo, DeviceQueueCreateInfo, DeviceV1_0,
         EXT_DEBUG_UTILS_EXTENSION, EntryV1_0, ExtDebugUtilsExtensionInstanceCommands,
-        ExtensionName, Extent2D, FALSE, Format, Handle, HasBuilder, Image, ImageAspectFlags,
-        ImageSubresourceRange, ImageUsageFlags, ImageView, ImageViewCreateInfo, ImageViewType,
-        InstanceCreateFlags, InstanceCreateInfo, InstanceV1_0,
-        KHR_GET_PHYSICAL_DEVICE_PROPERTIES2_EXTENSION, KHR_PORTABILITY_ENUMERATION_EXTENSION,
-        KHR_SWAPCHAIN_EXTENSION, KhrSurfaceExtensionInstanceCommands,
-        KhrSwapchainExtensionDeviceCommands, PhysicalDevice, PhysicalDeviceFeatures,
-        PhysicalDeviceType, PresentModeKHR, Queue, QueueFlags, SharingMode, SurfaceCapabilitiesKHR,
-        SurfaceFormatKHR, SurfaceKHR, SwapchainCreateInfoKHR, SwapchainKHR, TRUE, make_version,
+        ExtensionName, Extent2D, FALSE, Format, FrontFace, GraphicsPipelineCreateInfo, Handle,
+        HasBuilder, Image, ImageAspectFlags, ImageLayout, ImageSubresourceRange, ImageUsageFlags,
+        ImageView, ImageViewCreateInfo, ImageViewType, InstanceCreateFlags, InstanceCreateInfo,
+        InstanceV1_0, KHR_GET_PHYSICAL_DEVICE_PROPERTIES2_EXTENSION,
+        KHR_PORTABILITY_ENUMERATION_EXTENSION, KHR_SWAPCHAIN_EXTENSION,
+        KhrSurfaceExtensionInstanceCommands, KhrSwapchainExtensionDeviceCommands, LogicOp,
+        Offset2D, PhysicalDevice, PhysicalDeviceFeatures, PhysicalDeviceType, Pipeline,
+        PipelineBindPoint, PipelineCache, PipelineColorBlendAttachmentState,
+        PipelineColorBlendStateCreateInfo, PipelineInputAssemblyStateCreateInfo, PipelineLayout,
+        PipelineLayoutCreateInfo, PipelineMultisampleStateCreateInfo,
+        PipelineRasterizationStateCreateInfo, PipelineShaderStageCreateInfo,
+        PipelineVertexInputStateCreateInfo, PipelineViewportStateCreateInfo, PolygonMode,
+        PresentModeKHR, PrimitiveTopology, Queue, QueueFlags, Rect2D, RenderPass,
+        RenderPassCreateInfo, SampleCountFlags, ShaderModule, ShaderModuleCreateInfo,
+        ShaderStageFlags, SharingMode, SubpassDescription, SurfaceCapabilitiesKHR,
+        SurfaceFormatKHR, SurfaceKHR, SwapchainCreateInfoKHR, SwapchainKHR, TRUE, Viewport,
+        make_version,
     },
     window::{create_surface, get_required_instance_extensions},
 };
@@ -80,6 +93,9 @@ pub struct VulkanData {
     swapchain_extent: Extent2D,
     swapchain_images: Vec<Image>,
     swapchain_image_views: Vec<ImageView>,
+    pipeline_layout: PipelineLayout,
+    render_pass: RenderPass,
+    pipeline: Pipeline,
 }
 
 impl VulkanApp {
@@ -92,7 +108,9 @@ impl VulkanApp {
         unsafe { Self::pick_physical_device(&instance, &mut data)? };
         let device = unsafe { Self::create_logical_device(&entry, &instance, &mut data) }?;
         unsafe { Self::create_swapchain(window, &instance, &device, &mut data) }?;
-        unsafe { Self::create_swapchain_image_views(&device, &mut data)? };
+        (unsafe { Self::create_swapchain_image_views(&device, &mut data) })?;
+        unsafe { Self::create_render_pass(&instance, &device, &mut data)? };
+        (unsafe { Self::create_pipeline(&device, &mut data) })?;
         info!("Woo created everything, hard work ain't it?");
         Ok(Self {
             entry,
@@ -361,7 +379,7 @@ impl VulkanApp {
         Ok(())
     }
 
-    fn create_swapchain_image_views(device: &Device, data: &mut VulkanData) -> Result<()> {
+    unsafe fn create_swapchain_image_views(device: &Device, data: &mut VulkanData) -> Result<()> {
         data.swapchain_image_views = data
             .swapchain_images
             .iter()
@@ -392,6 +410,148 @@ impl VulkanApp {
         Ok(())
     }
 
+    unsafe fn create_pipeline(device: &Device, data: &mut VulkanData) -> Result<()> {
+        let vert = include_bytes!("../../shaders/vert.spv");
+        let frag = include_bytes!("../../shaders/frag.spv");
+
+        let vert_shader_module = unsafe { Self::create_shader_module(device, vert)? };
+        let frag_shader_module = unsafe { Self::create_shader_module(device, frag)? };
+
+        let vert_stage = PipelineShaderStageCreateInfo::builder()
+            .stage(ShaderStageFlags::VERTEX)
+            .module(vert_shader_module)
+            .name(b"main\0");
+
+        let frag_stage = PipelineShaderStageCreateInfo::builder()
+            .stage(ShaderStageFlags::FRAGMENT)
+            .module(frag_shader_module)
+            .name(b"main\0");
+
+        let vertex_input_state = PipelineVertexInputStateCreateInfo::builder();
+
+        let input_assembly_state = PipelineInputAssemblyStateCreateInfo::builder()
+            .topology(PrimitiveTopology::TRIANGLE_LIST)
+            .primitive_restart_enable(false);
+
+        let viewport = Viewport::builder()
+            .x(0.0)
+            .y(0.0)
+            .width(data.swapchain_extent.width as f32)
+            .height(data.swapchain_extent.height as f32)
+            .min_depth(0.0)
+            .max_depth(1.0);
+
+        let scissor = Rect2D::builder()
+            .offset(Offset2D { x: 0, y: 0 })
+            .extent(data.swapchain_extent);
+
+        let viewports = &[viewport];
+        let scissors = &[scissor];
+        let viewport_state = PipelineViewportStateCreateInfo::builder()
+            .viewports(viewports)
+            .scissors(scissors);
+
+        let rasterization_state = PipelineRasterizationStateCreateInfo::builder()
+            .depth_clamp_enable(false)
+            .rasterizer_discard_enable(false)
+            .polygon_mode(PolygonMode::FILL)
+            .line_width(1.0)
+            .cull_mode(CullModeFlags::BACK)
+            .front_face(FrontFace::CLOCKWISE)
+            .depth_bias_enable(false);
+
+        let multisample_state = PipelineMultisampleStateCreateInfo::builder()
+            .sample_shading_enable(false)
+            .rasterization_samples(SampleCountFlags::_1);
+
+        let attachment = PipelineColorBlendAttachmentState::builder()
+            .color_write_mask(ColorComponentFlags::all())
+            .blend_enable(false)
+            .src_color_blend_factor(BlendFactor::ONE) // Optional
+            .dst_color_blend_factor(BlendFactor::ZERO) // Optional
+            .color_blend_op(BlendOp::ADD) // Optional
+            .src_alpha_blend_factor(BlendFactor::ONE) // Optional
+            .dst_alpha_blend_factor(BlendFactor::ZERO) // Optional
+            .alpha_blend_op(BlendOp::ADD); // Optional
+
+        let attachments = &[attachment];
+        let color_blend_state = PipelineColorBlendStateCreateInfo::builder()
+            .logic_op_enable(false)
+            .logic_op(LogicOp::COPY)
+            .attachments(attachments)
+            .blend_constants([0.0, 0.0, 0.0, 0.0]);
+
+        let layout_info = PipelineLayoutCreateInfo::builder();
+
+        data.pipeline_layout = unsafe { device.create_pipeline_layout(&layout_info, None) }?;
+
+        let stages = &[vert_stage, frag_stage];
+        let info = GraphicsPipelineCreateInfo::builder()
+            .stages(stages)
+            .vertex_input_state(&vertex_input_state)
+            .input_assembly_state(&input_assembly_state)
+            .viewport_state(&viewport_state)
+            .rasterization_state(&rasterization_state)
+            .multisample_state(&multisample_state)
+            .color_blend_state(&color_blend_state)
+            .layout(data.pipeline_layout)
+            .render_pass(data.render_pass)
+            .subpass(0);
+
+        data.pipeline =
+            unsafe { device.create_graphics_pipelines(PipelineCache::null(), &[info], None) }?.0[0];
+
+        unsafe { device.destroy_shader_module(vert_shader_module, None) };
+        unsafe { device.destroy_shader_module(frag_shader_module, None) };
+
+        Ok(())
+    }
+
+    unsafe fn create_shader_module(device: &Device, bytecode: &[u8]) -> Result<ShaderModule> {
+        let bytecode = Bytecode::new(bytecode).unwrap();
+
+        let info = ShaderModuleCreateInfo::builder()
+            .code(bytecode.code())
+            .code_size(bytecode.code_size());
+
+        Ok(unsafe { device.create_shader_module(&info, None) }?)
+    }
+
+    unsafe fn create_render_pass(
+        instance: &Instance,
+        device: &Device,
+        data: &mut VulkanData,
+    ) -> Result<()> {
+        let color_attachment = AttachmentDescription::builder()
+            .format(data.swapchain_format)
+            .samples(SampleCountFlags::_1)
+            .load_op(AttachmentLoadOp::CLEAR)
+            .store_op(AttachmentStoreOp::STORE)
+            .stencil_load_op(AttachmentLoadOp::DONT_CARE)
+            .stencil_store_op(AttachmentStoreOp::DONT_CARE)
+            .initial_layout(ImageLayout::UNDEFINED)
+            .final_layout(ImageLayout::PRESENT_SRC_KHR);
+
+        let color_attachment_ref = AttachmentReference::builder()
+            .attachment(0)
+            .layout(ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
+
+        let color_attachments = &[color_attachment_ref];
+        let subpass = SubpassDescription::builder()
+            .pipeline_bind_point(PipelineBindPoint::GRAPHICS)
+            .color_attachments(color_attachments);
+
+        let attachments = &[color_attachment];
+        let subpasses = &[subpass];
+        let info = RenderPassCreateInfo::builder()
+            .attachments(attachments)
+            .subpasses(subpasses);
+
+        data.render_pass = unsafe { device.create_render_pass(&info, None) }?;
+
+        Ok(())
+    }
+
     pub unsafe fn destroy(&mut self) {
         if VALIDATION_ENABLED {
             unsafe {
@@ -410,6 +570,12 @@ impl VulkanApp {
             .swapchain_image_views
             .iter()
             .for_each(|v| unsafe { self.device.destroy_image_view(*v, None) });
+        unsafe {
+            self.device
+                .destroy_pipeline_layout(self.data.pipeline_layout, None)
+        };
+        unsafe { self.device.destroy_render_pass(self.data.render_pass, None) };
+        unsafe { self.device.destroy_pipeline(self.data.pipeline, None) };
     }
 }
 
