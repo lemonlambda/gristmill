@@ -29,6 +29,7 @@
             vulkan-tools
             vulkan-tools-lunarg
             vulkan-validation-layers
+            vulkan-extension-layer
 
             # winit dependencies
             libxkbcommon
