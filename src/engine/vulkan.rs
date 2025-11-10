@@ -1,10 +1,10 @@
+use anyhow::{Result, anyhow};
+use log::*;
 use std::{
     collections::HashSet,
     ffi::{CStr, c_void},
 };
-
-use anyhow::{Result, anyhow};
-use log::*;
+use thiserror::Error;
 use vulkanalia::{
     Entry, Instance, Version,
     loader::{LIBRARY, LibloadingLoader},
@@ -15,7 +15,7 @@ use vulkanalia::{
         ExtDebugUtilsExtensionInstanceCommands, ExtensionName, FALSE, HasBuilder,
         InstanceCreateFlags, InstanceCreateInfo, InstanceV1_0,
         KHR_GET_PHYSICAL_DEVICE_PROPERTIES2_EXTENSION, KHR_PORTABILITY_ENUMERATION_EXTENSION,
-        make_version,
+        PhysicalDevice, PhysicalDeviceType, QueueFlags, TRUE, make_version,
     },
     window::get_required_instance_extensions,
 };
@@ -48,6 +48,10 @@ extern "system" fn debug_callback(
     FALSE
 }
 
+#[derive(Debug, Error)]
+#[error("Missing {0}.")]
+pub struct SuitabilityError(pub &'static str);
+
 #[derive(Clone, Debug)]
 pub struct VulkanApp {
     entry: Entry,
@@ -58,6 +62,7 @@ pub struct VulkanApp {
 #[derive(Clone, Debug, Default)]
 pub struct VulkanData {
     messenger: DebugUtilsMessengerEXT,
+    physical_device: PhysicalDevice,
 }
 
 impl VulkanApp {
@@ -66,6 +71,7 @@ impl VulkanApp {
         let entry = unsafe { Entry::new(loader).map_err(|b| anyhow!("{}", b))? };
         let mut data = VulkanData::default();
         let instance = unsafe { Self::create_instance(window, &entry, &mut data) }?;
+        unsafe { Self::pick_physical_device(&instance, &mut data)? };
         Ok(Self {
             entry,
             instance,
@@ -148,6 +154,53 @@ impl VulkanApp {
         Ok(instance)
     }
 
+    pub unsafe fn pick_physical_device(instance: &Instance, data: &mut VulkanData) -> Result<()> {
+        for physical_device in unsafe { instance.enumerate_physical_devices() }? {
+            let properties = unsafe { instance.get_physical_device_properties(physical_device) };
+
+            if let Err(error) =
+                unsafe { Self::check_physical_device(instance, data, physical_device) }
+            {
+                warn!(
+                    "Skipping physical device (`{}`) : {}",
+                    properties.device_name, error
+                );
+            } else {
+                info!("Selected physical device (`{}`).", properties.device_name);
+                data.physical_device = physical_device;
+                return Ok(());
+            }
+        }
+
+        Err(anyhow!("Failed to find suitable device."))
+    }
+
+    /// Get the physical device requirements and check they meet our requirements
+    unsafe fn check_physical_device(
+        instance: &Instance,
+        data: &VulkanData,
+        physical_device: PhysicalDevice,
+    ) -> Result<()> {
+        let properties = unsafe { instance.get_physical_device_properties(physical_device) };
+
+        if properties.device_type != PhysicalDeviceType::DISCRETE_GPU {
+            return Err(anyhow!(SuitabilityError(
+                "Only discrete GPUs are supported."
+            )));
+        }
+
+        let features = unsafe { instance.get_physical_device_features(physical_device) };
+        if features.geometry_shader != TRUE {
+            return Err(anyhow!(SuitabilityError(
+                "Missing geometry shader support."
+            )));
+        }
+
+        unsafe { QueueFamilyIndices::get(instance, data, physical_device)? };
+
+        Ok(())
+    }
+
     pub unsafe fn render(&mut self, window: &Window) -> Result<()> {
         Ok(())
     }
@@ -161,5 +214,33 @@ impl VulkanApp {
         }
 
         unsafe { self.instance.destroy_instance(None) }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+struct QueueFamilyIndices {
+    graphics: u32,
+}
+
+impl QueueFamilyIndices {
+    unsafe fn get(
+        instance: &Instance,
+        data: &VulkanData,
+        physical_device: PhysicalDevice,
+    ) -> Result<Self> {
+        let properties = instance.get_physical_device_queue_family_properties(physical_device);
+
+        let graphics = properties
+            .iter()
+            .position(|p| p.queue_flags.contains(QueueFlags::GRAPHICS))
+            .map(|i| i as u32);
+
+        if let Some(graphics) = graphics {
+            Ok(Self { graphics })
+        } else {
+            Err(anyhow!(SuitabilityError(
+                "Missing required queue families."
+            )))
+        }
     }
 }
