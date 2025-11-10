@@ -9,17 +9,16 @@ use vulkanalia::{
     Device, Entry, Instance, Version,
     loader::{LIBRARY, LibloadingLoader},
     vk::{
-        ApplicationInfo, Bool32, DebugUtilsMessageSeverityFlagsEXT,
-        DebugUtilsMessageTypeFlagsEXT, DebugUtilsMessengerCallbackDataEXT,
-        DebugUtilsMessengerCreateInfoEXT, DebugUtilsMessengerEXT, DeviceCreateInfo,
-        DeviceQueueCreateInfo, DeviceV1_0, EXT_DEBUG_UTILS_EXTENSION, EntryV1_0,
-        ExtDebugUtilsExtensionInstanceCommands, ExtensionName, FALSE, HasBuilder,
-        InstanceCreateFlags, InstanceCreateInfo, InstanceV1_0,
+        ApplicationInfo, Bool32, DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
+        DebugUtilsMessengerCallbackDataEXT, DebugUtilsMessengerCreateInfoEXT,
+        DebugUtilsMessengerEXT, DeviceCreateInfo, DeviceQueueCreateInfo, DeviceV1_0,
+        EXT_DEBUG_UTILS_EXTENSION, EntryV1_0, ExtDebugUtilsExtensionInstanceCommands,
+        ExtensionName, FALSE, HasBuilder, InstanceCreateFlags, InstanceCreateInfo, InstanceV1_0,
         KHR_GET_PHYSICAL_DEVICE_PROPERTIES2_EXTENSION, KHR_PORTABILITY_ENUMERATION_EXTENSION,
-        PhysicalDevice, PhysicalDeviceFeatures, PhysicalDeviceType, Queue, QueueFlags, TRUE,
-        make_version,
+        KhrSurfaceExtensionInstanceCommands, PhysicalDevice, PhysicalDeviceFeatures,
+        PhysicalDeviceType, Queue, QueueFlags, SurfaceKHR, TRUE, make_version,
     },
-    window::get_required_instance_extensions,
+    window::{create_surface, get_required_instance_extensions},
 };
 use winit::window::Window;
 
@@ -67,6 +66,8 @@ pub struct VulkanData {
     messenger: DebugUtilsMessengerEXT,
     physical_device: PhysicalDevice,
     graphics_queue: Queue,
+    present_queue: Queue,
+    surface: SurfaceKHR,
 }
 
 impl VulkanApp {
@@ -75,6 +76,7 @@ impl VulkanApp {
         let entry = unsafe { Entry::new(loader).map_err(|b| anyhow!("{}", b))? };
         let mut data = VulkanData::default();
         let instance = unsafe { Self::create_instance(window, &entry, &mut data) }?;
+        data.surface = unsafe { create_surface(&instance, &window, &window) }?;
         unsafe { Self::pick_physical_device(&instance, &mut data)? };
         let device = unsafe { Self::create_logical_device(&entry, &instance, &mut data) }?;
         Ok(Self {
@@ -220,10 +222,19 @@ impl VulkanApp {
     ) -> Result<Device> {
         let indices = unsafe { QueueFamilyIndices::get(instance, data, data.physical_device) }?;
 
+        let mut unique_indices = HashSet::new();
+        unique_indices.insert(indices.graphics);
+        unique_indices.insert(indices.present);
+
         let queue_priorities = &[1.0];
-        let queue_info = DeviceQueueCreateInfo::builder()
-            .queue_family_index(indices.graphics)
-            .queue_priorities(queue_priorities);
+        let queue_infos = unique_indices
+            .iter()
+            .map(|i| {
+                DeviceQueueCreateInfo::builder()
+                    .queue_family_index(*i)
+                    .queue_priorities(queue_priorities)
+            })
+            .collect::<Vec<_>>();
 
         let layers = if VALIDATION_ENABLED {
             vec![VALIDATION_LAYER.as_ptr()]
@@ -240,15 +251,15 @@ impl VulkanApp {
 
         let features = PhysicalDeviceFeatures::builder();
 
-        let queue_infos = &[queue_info];
         let info = DeviceCreateInfo::builder()
-            .queue_create_infos(queue_infos)
+            .queue_create_infos(&queue_infos)
             .enabled_layer_names(&layers)
             .enabled_extension_names(&extensions)
             .enabled_features(&features);
 
         let device = unsafe { instance.create_device(data.physical_device, &info, None) }?;
         data.graphics_queue = unsafe { device.get_device_queue(indices.graphics, 0) };
+        data.present_queue = unsafe { device.get_device_queue(indices.present, 0) };
 
         Ok(device)
     }
@@ -261,6 +272,7 @@ impl VulkanApp {
             };
         }
 
+        unsafe { self.instance.destroy_surface_khr(self.data.surface, None) };
         unsafe { self.instance.destroy_instance(None) }
         unsafe { self.device.destroy_device(None) };
     }
@@ -269,12 +281,13 @@ impl VulkanApp {
 #[derive(Copy, Clone, Debug)]
 struct QueueFamilyIndices {
     graphics: u32,
+    present: u32,
 }
 
 impl QueueFamilyIndices {
     unsafe fn get(
         instance: &Instance,
-        _data: &VulkanData,
+        data: &VulkanData,
         physical_device: PhysicalDevice,
     ) -> Result<Self> {
         let properties =
@@ -285,8 +298,22 @@ impl QueueFamilyIndices {
             .position(|p| p.queue_flags.contains(QueueFlags::GRAPHICS))
             .map(|i| i as u32);
 
-        if let Some(graphics) = graphics {
-            Ok(Self { graphics })
+        let mut present = None;
+        for (index, properties) in properties.iter().enumerate() {
+            if unsafe {
+                instance.get_physical_device_surface_support_khr(
+                    physical_device,
+                    index as u32,
+                    data.surface,
+                )?
+            } {
+                present = Some(index as u32);
+                break;
+            }
+        }
+
+        if let (Some(graphics), Some(present)) = (graphics, present) {
+            Ok(Self { graphics, present })
         } else {
             Err(anyhow!(SuitabilityError(
                 "Missing required queue families."
