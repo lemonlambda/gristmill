@@ -49,7 +49,7 @@ extern "system" fn debug_callback(
 }
 
 #[derive(Debug, Error)]
-#[error("Missing {0}.")]
+#[error("{0}")]
 pub struct SuitabilityError(pub &'static str);
 
 #[derive(Clone, Debug)]
@@ -183,7 +183,9 @@ impl VulkanApp {
     ) -> Result<()> {
         let properties = unsafe { instance.get_physical_device_properties(physical_device) };
 
-        if properties.device_type != PhysicalDeviceType::DISCRETE_GPU {
+        if properties.device_type != PhysicalDeviceType::DISCRETE_GPU
+            && properties.device_type != PhysicalDeviceType::INTEGRATED_GPU
+        {
             return Err(anyhow!(SuitabilityError(
                 "Only discrete GPUs are supported."
             )));
