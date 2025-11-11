@@ -13,7 +13,7 @@ use vulkanalia::{
     loader::{LIBRARY, LibloadingLoader},
     vk::{
         AccessFlags, ApplicationInfo, AttachmentDescription, AttachmentLoadOp, AttachmentReference,
-        AttachmentStoreOp, BlendFactor, BlendOp, Bool32, Buffer, BufferCreateFlags,
+        AttachmentStoreOp, BlendFactor, BlendOp, Bool32, Buffer, BufferCopy, BufferCreateFlags,
         BufferCreateInfo, BufferUsageFlags, ClearColorValue, ClearValue, ColorComponentFlags,
         ColorSpaceKHR, CommandBuffer, CommandBufferAllocateInfo, CommandBufferBeginInfo,
         CommandBufferInheritanceInfo, CommandBufferLevel, CommandBufferUsageFlags, CommandPool,
@@ -21,12 +21,12 @@ use vulkanalia::{
         CompositeAlphaFlagsKHR, CullModeFlags, DebugUtilsMessageSeverityFlagsEXT,
         DebugUtilsMessageTypeFlagsEXT, DebugUtilsMessengerCallbackDataEXT,
         DebugUtilsMessengerCreateInfoEXT, DebugUtilsMessengerEXT, DeviceCreateInfo, DeviceMemory,
-        DeviceQueueCreateInfo, DeviceV1_0, EXT_DEBUG_UTILS_EXTENSION, EntryV1_0, ErrorCode,
-        ExtDebugUtilsExtensionInstanceCommands, ExtensionName, Extent2D, FALSE, Fence,
+        DeviceQueueCreateInfo, DeviceSize, DeviceV1_0, EXT_DEBUG_UTILS_EXTENSION, EntryV1_0,
+        ErrorCode, ExtDebugUtilsExtensionInstanceCommands, ExtensionName, Extent2D, FALSE, Fence,
         FenceCreateFlags, FenceCreateInfo, Format, Framebuffer, FramebufferCreateInfo, FrontFace,
         GraphicsPipelineCreateInfo, Handle, HasBuilder, Image, ImageAspectFlags, ImageLayout,
         ImageSubresourceRange, ImageUsageFlags, ImageView, ImageViewCreateInfo, ImageViewType,
-        InstanceCreateFlags, InstanceCreateInfo, InstanceV1_0,
+        IndexType, InstanceCreateFlags, InstanceCreateInfo, InstanceV1_0,
         KHR_GET_PHYSICAL_DEVICE_PROPERTIES2_EXTENSION, KHR_PORTABILITY_ENUMERATION_EXTENSION,
         KHR_SWAPCHAIN_EXTENSION, KhrSurfaceExtensionInstanceCommands,
         KhrSwapchainExtensionDeviceCommands, LogicOp, MemoryAllocateInfo, MemoryMapFlags,
@@ -48,7 +48,7 @@ use vulkanalia::{
 };
 use winit::window::Window;
 
-use crate::engine::vertex::{VERTICES, Vertex};
+use crate::engine::vertex::{INDICES, VERTICES, Vertex};
 
 const PORTABILITY_MACOS_VERSION: Version = Version::new(1, 3, 216);
 
@@ -119,6 +119,8 @@ pub struct VulkanData {
     images_in_flight: Vec<Fence>,
     vertex_buffer: Buffer,
     vertex_buffer_memory: DeviceMemory,
+    index_buffer: Buffer,
+    index_buffer_memory: DeviceMemory,
 }
 
 impl VulkanApp {
@@ -138,6 +140,7 @@ impl VulkanApp {
             Self::create_framebuffers(&device, &mut data)?;
             Self::create_command_pool(&instance, &device, &mut data)?;
             Self::create_vertex_buffer(&instance, &device, &mut data)?;
+            Self::create_index_buffer(&instance, &device, &mut data)?;
             Self::create_command_buffers(&device, &mut data)?;
             Self::create_sync_objects(&device, &mut data)?;
             info!("Woo created everything, hard work ain't it?");
@@ -748,7 +751,14 @@ impl VulkanApp {
                     data.pipeline,
                 );
                 device.cmd_bind_vertex_buffers(*command_buffer, 0, &[data.vertex_buffer], &[0]);
-                device.cmd_draw(*command_buffer, VERTICES.len() as u32, 1, 0, 0);
+                device.cmd_bind_index_buffer(
+                    *command_buffer,
+                    data.index_buffer,
+                    0,
+                    IndexType::UINT16,
+                );
+                device.cmd_draw_indexed(*command_buffer, INDICES.len() as u32, 1, 0, 0, 0);
+
                 device.cmd_end_render_pass(*command_buffer);
                 device.end_command_buffer(*command_buffer)?;
             };
@@ -819,48 +829,160 @@ impl VulkanApp {
         unsafe { self.device.destroy_swapchain_khr(self.data.swapchain, None) };
     }
 
+    unsafe fn create_buffer(
+        instance: &Instance,
+        device: &Device,
+        data: &VulkanData,
+        size: DeviceSize,
+        usage: BufferUsageFlags,
+        properties: MemoryPropertyFlags,
+    ) -> Result<(Buffer, DeviceMemory)> {
+        let buffer_info = BufferCreateInfo::builder()
+            .size(size)
+            .usage(usage)
+            .sharing_mode(SharingMode::EXCLUSIVE);
+
+        let buffer = unsafe { device.create_buffer(&buffer_info, None) }?;
+
+        let requirements = unsafe { device.get_buffer_memory_requirements(buffer) };
+
+        let memory_info = MemoryAllocateInfo::builder()
+            .allocation_size(requirements.size)
+            .memory_type_index(unsafe {
+                Self::get_memory_type_index(instance, data, properties, requirements)
+            }?);
+
+        let buffer_memory = unsafe { device.allocate_memory(&memory_info, None) }?;
+
+        (unsafe { device.bind_buffer_memory(buffer, buffer_memory, 0) })?;
+
+        Ok((buffer, buffer_memory))
+    }
+
     unsafe fn create_vertex_buffer(
         instance: &Instance,
         device: &Device,
         data: &mut VulkanData,
     ) -> Result<()> {
-        let buffer_info = BufferCreateInfo::builder()
-            .size((size_of::<Vertex>() * VERTICES.len()) as u64)
-            .usage(BufferUsageFlags::VERTEX_BUFFER)
-            .sharing_mode(SharingMode::EXCLUSIVE)
-            .flags(BufferCreateFlags::empty()); // Optional.
+        let size = (size_of::<Vertex>() * VERTICES.len()) as u64;
 
-        data.vertex_buffer = unsafe { device.create_buffer(&buffer_info, None) }?;
-
-        let requirements = unsafe { device.get_buffer_memory_requirements(data.vertex_buffer) };
-
-        let memory_info = MemoryAllocateInfo::builder()
-            .allocation_size(requirements.size)
-            .memory_type_index(unsafe {
-                Self::get_memory_type_index(
-                    instance,
-                    data,
-                    MemoryPropertyFlags::HOST_COHERENT | MemoryPropertyFlags::HOST_VISIBLE,
-                    requirements,
-                )
-            }?);
-
-        data.vertex_buffer_memory = unsafe { device.allocate_memory(&memory_info, None) }?;
-
-        (unsafe { device.bind_buffer_memory(data.vertex_buffer, data.vertex_buffer_memory, 0) })?;
-
-        let memory = unsafe {
-            device.map_memory(
-                data.vertex_buffer_memory,
-                0,
-                buffer_info.size,
-                MemoryMapFlags::empty(),
+        let (staging_buffer, staging_buffer_memory) = unsafe {
+            Self::create_buffer(
+                instance,
+                device,
+                data,
+                size,
+                BufferUsageFlags::TRANSFER_SRC,
+                MemoryPropertyFlags::HOST_COHERENT | MemoryPropertyFlags::HOST_VISIBLE,
             )
         }?;
 
+        let memory =
+            unsafe { device.map_memory(staging_buffer_memory, 0, size, MemoryMapFlags::empty()) }?;
+
         unsafe { copy_nonoverlapping(VERTICES.as_ptr(), memory.cast(), VERTICES.len()) };
 
-        unsafe { device.unmap_memory(data.vertex_buffer_memory) };
+        unsafe { device.unmap_memory(staging_buffer_memory) };
+
+        let (vertex_buffer, vertex_buffer_memory) = unsafe {
+            Self::create_buffer(
+                instance,
+                device,
+                data,
+                size,
+                BufferUsageFlags::VERTEX_BUFFER | BufferUsageFlags::TRANSFER_DST,
+                MemoryPropertyFlags::DEVICE_LOCAL,
+            )
+        }?;
+
+        data.vertex_buffer = vertex_buffer;
+        data.vertex_buffer_memory = vertex_buffer_memory;
+
+        (unsafe { Self::copy_buffer(device, data, staging_buffer, vertex_buffer, size) })?;
+
+        unsafe { device.destroy_buffer(staging_buffer, None) };
+        unsafe { device.free_memory(staging_buffer_memory, None) };
+
+        Ok(())
+    }
+
+    unsafe fn create_index_buffer(
+        instance: &Instance,
+        device: &Device,
+        data: &mut VulkanData,
+    ) -> Result<()> {
+        let size = (size_of::<u16>() * INDICES.len()) as u64;
+
+        let (staging_buffer, staging_buffer_memory) = unsafe {
+            Self::create_buffer(
+                instance,
+                device,
+                data,
+                size,
+                BufferUsageFlags::TRANSFER_SRC,
+                MemoryPropertyFlags::HOST_COHERENT | MemoryPropertyFlags::HOST_VISIBLE,
+            )
+        }?;
+
+        let memory =
+            unsafe { device.map_memory(staging_buffer_memory, 0, size, MemoryMapFlags::empty()) }?;
+
+        unsafe { copy_nonoverlapping(INDICES.as_ptr(), memory.cast(), INDICES.len()) };
+
+        unsafe { device.unmap_memory(staging_buffer_memory) };
+
+        let (index_buffer, index_buffer_memory) = unsafe {
+            Self::create_buffer(
+                instance,
+                device,
+                data,
+                size,
+                BufferUsageFlags::TRANSFER_DST | BufferUsageFlags::INDEX_BUFFER,
+                MemoryPropertyFlags::DEVICE_LOCAL,
+            )
+        }?;
+
+        data.index_buffer = index_buffer;
+        data.index_buffer_memory = index_buffer_memory;
+
+        (unsafe { Self::copy_buffer(device, data, staging_buffer, index_buffer, size) })?;
+
+        unsafe { device.destroy_buffer(staging_buffer, None) };
+        unsafe { device.free_memory(staging_buffer_memory, None) };
+
+        Ok(())
+    }
+
+    unsafe fn copy_buffer(
+        device: &Device,
+        data: &VulkanData,
+        source: Buffer,
+        destination: Buffer,
+        size: DeviceSize,
+    ) -> Result<()> {
+        let info = CommandBufferAllocateInfo::builder()
+            .level(CommandBufferLevel::PRIMARY)
+            .command_pool(data.command_pool)
+            .command_buffer_count(1);
+
+        let command_buffer = unsafe { device.allocate_command_buffers(&info) }?[0];
+
+        let info =
+            CommandBufferBeginInfo::builder().flags(CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+
+        (unsafe { device.begin_command_buffer(command_buffer, &info) })?;
+
+        let regions = BufferCopy::builder().size(size);
+        unsafe { device.cmd_copy_buffer(command_buffer, source, destination, &[regions]) };
+
+        (unsafe { device.end_command_buffer(command_buffer) })?;
+
+        let command_buffers = &[command_buffer];
+        let info = SubmitInfo::builder().command_buffers(command_buffers);
+
+        (unsafe { device.queue_submit(data.graphics_queue, &[info], Fence::null()) })?;
+        (unsafe { device.queue_wait_idle(data.graphics_queue) })?;
+        unsafe { device.free_command_buffers(data.command_pool, &[command_buffer]) };
 
         Ok(())
     }
@@ -887,6 +1009,8 @@ impl VulkanApp {
             self.device.device_wait_idle().unwrap();
 
             self.destroy_swapchain();
+            self.device.destroy_buffer(self.data.index_buffer, None);
+            self.device.free_memory(self.data.index_buffer_memory, None);
             self.device.destroy_buffer(self.data.vertex_buffer, None);
             self.device
                 .free_memory(self.data.vertex_buffer_memory, None);

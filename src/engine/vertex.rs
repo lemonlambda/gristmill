@@ -8,6 +8,7 @@ use vulkanalia::vk::{
 
 pub type Vec2 = cgmath::Vector2<f32>;
 pub type Vec3 = cgmath::Vector3<f32>;
+pub type Mat4 = cgmath::Matrix4<f32>;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
@@ -46,11 +47,19 @@ impl Vertex {
     }
 }
 
-pub static VERTICES: [Vertex; 6] = [
-    Vertex::new(vec2(0.0, -0.5), vec3(1.0, 0.0, 0.0)),
-    Vertex::new(vec2(0.5, 0.5), vec3(0.0, 1.0, 0.0)),
-    Vertex::new(vec2(-0.5, 0.5), vec3(0.0, 0.0, 1.0)),
-    Vertex::new(vec2(0.0, -0.75), vec3(1.0, 0.0, 0.0)),
-    Vertex::new(vec2(0.75, -0.75), vec3(0.0, 1.0, 0.0)),
-    Vertex::new(vec2(-0.75, 0.75), vec3(0.0, 0.0, 1.0)),
+pub static VERTICES: [Vertex; 4] = [
+    Vertex::new(vec2(-0.5, -0.5), vec3(1.0, 0.0, 0.0)),
+    Vertex::new(vec2(0.5, -0.5), vec3(0.0, 1.0, 0.0)),
+    Vertex::new(vec2(0.5, 0.5), vec3(0.0, 0.0, 1.0)),
+    Vertex::new(vec2(-0.5, 0.5), vec3(1.0, 1.0, 1.0)),
 ];
+
+pub const INDICES: &[u16] = &[0, 1, 2, 2, 3, 0];
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct UniformBufferObject {
+    model: Mat4,
+    view: Mat4,
+    proj: Mat4,
+}
