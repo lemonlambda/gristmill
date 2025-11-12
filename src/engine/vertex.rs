@@ -13,12 +13,12 @@ pub type Mat4 = cgmath::Matrix4<f32>;
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
 pub struct Vertex {
-    pos: Vec2,
+    pos: Vec3,
     color: Vec3,
 }
 
 impl Vertex {
-    const fn new(pos: Vec2, color: Vec3) -> Self {
+    const fn new(pos: Vec3, color: Vec3) -> Self {
         Self { pos, color }
     }
     pub fn binding_description() -> VertexInputBindingDescription {
@@ -48,18 +48,18 @@ impl Vertex {
 }
 
 pub static VERTICES: [Vertex; 4] = [
-    Vertex::new(vec2(-0.5, -0.5), vec3(1.0, 0.0, 0.0)),
-    Vertex::new(vec2(0.5, -0.5), vec3(0.0, 1.0, 0.0)),
-    Vertex::new(vec2(0.5, 0.5), vec3(0.0, 0.0, 1.0)),
-    Vertex::new(vec2(-0.5, 0.5), vec3(1.0, 1.0, 1.0)),
+    Vertex::new(vec3(0.0, 0.5, 0.0), vec3(1.0, 0.0, 0.0)),
+    Vertex::new(vec3(-0.5, -0.25, 0.0), vec3(0.0, 1.0, 0.0)),
+    Vertex::new(vec3(0.5, -0.25, 0.0), vec3(0.0, 0.0, 1.0)),
+    Vertex::new(vec3(0.0, 0.0, 5.0), vec3(1.0, 1.0, 1.0)),
 ];
 
-pub const INDICES: &[u16] = &[0, 1, 2, 2, 3, 0];
+pub const INDICES: &[u16] = &[0, 1, 2, 1, 2, 3];
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
 pub struct UniformBufferObject {
-    model: Mat4,
-    view: Mat4,
-    proj: Mat4,
+    pub model: Mat4,
+    pub view: Mat4,
+    pub proj: Mat4,
 }

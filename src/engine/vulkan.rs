@@ -1,10 +1,12 @@
 use anyhow::{Result, anyhow};
+use cgmath::{Deg, point3, vec3};
 use image::imageops::FilterType::Lanczos3;
 use log::*;
 use std::{
     collections::HashSet,
     ffi::{CStr, c_void},
     intrinsics::copy_nonoverlapping,
+    time::Instant,
 };
 use thiserror::Error;
 use vulkanalia::{
@@ -18,21 +20,24 @@ use vulkanalia::{
         ColorSpaceKHR, CommandBuffer, CommandBufferAllocateInfo, CommandBufferBeginInfo,
         CommandBufferInheritanceInfo, CommandBufferLevel, CommandBufferUsageFlags, CommandPool,
         CommandPoolCreateFlags, CommandPoolCreateInfo, ComponentMapping, ComponentSwizzle,
-        CompositeAlphaFlagsKHR, CullModeFlags, DebugUtilsMessageSeverityFlagsEXT,
-        DebugUtilsMessageTypeFlagsEXT, DebugUtilsMessengerCallbackDataEXT,
-        DebugUtilsMessengerCreateInfoEXT, DebugUtilsMessengerEXT, DeviceCreateInfo, DeviceMemory,
-        DeviceQueueCreateInfo, DeviceSize, DeviceV1_0, EXT_DEBUG_UTILS_EXTENSION, EntryV1_0,
-        ErrorCode, ExtDebugUtilsExtensionInstanceCommands, ExtensionName, Extent2D, FALSE, Fence,
-        FenceCreateFlags, FenceCreateInfo, Format, Framebuffer, FramebufferCreateInfo, FrontFace,
-        GraphicsPipelineCreateInfo, Handle, HasBuilder, Image, ImageAspectFlags, ImageLayout,
-        ImageSubresourceRange, ImageUsageFlags, ImageView, ImageViewCreateInfo, ImageViewType,
-        IndexType, InstanceCreateFlags, InstanceCreateInfo, InstanceV1_0,
-        KHR_GET_PHYSICAL_DEVICE_PROPERTIES2_EXTENSION, KHR_PORTABILITY_ENUMERATION_EXTENSION,
-        KHR_SWAPCHAIN_EXTENSION, KhrSurfaceExtensionInstanceCommands,
-        KhrSwapchainExtensionDeviceCommands, LogicOp, MemoryAllocateInfo, MemoryMapFlags,
-        MemoryPropertyFlags, MemoryRequirements, Offset2D, PhysicalDevice, PhysicalDeviceFeatures,
-        PhysicalDeviceType, Pipeline, PipelineBindPoint, PipelineCache,
-        PipelineColorBlendAttachmentState, PipelineColorBlendStateCreateInfo,
+        CompositeAlphaFlagsKHR, CopyDescriptorSet, CullModeFlags,
+        DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
+        DebugUtilsMessengerCallbackDataEXT, DebugUtilsMessengerCreateInfoEXT,
+        DebugUtilsMessengerEXT, DescriptorBufferInfo, DescriptorPool, DescriptorPoolCreateInfo,
+        DescriptorPoolSize, DescriptorSet, DescriptorSetAllocateInfo, DescriptorSetLayout,
+        DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo, DescriptorType,
+        DeviceCreateInfo, DeviceMemory, DeviceQueueCreateInfo, DeviceSize, DeviceV1_0,
+        EXT_DEBUG_UTILS_EXTENSION, EntryV1_0, ErrorCode, ExtDebugUtilsExtensionInstanceCommands,
+        ExtensionName, Extent2D, FALSE, Fence, FenceCreateFlags, FenceCreateInfo, Format,
+        Framebuffer, FramebufferCreateInfo, FrontFace, GraphicsPipelineCreateInfo, Handle,
+        HasBuilder, Image, ImageAspectFlags, ImageLayout, ImageSubresourceRange, ImageUsageFlags,
+        ImageView, ImageViewCreateInfo, ImageViewType, IndexType, InstanceCreateFlags,
+        InstanceCreateInfo, InstanceV1_0, KHR_GET_PHYSICAL_DEVICE_PROPERTIES2_EXTENSION,
+        KHR_PORTABILITY_ENUMERATION_EXTENSION, KHR_SWAPCHAIN_EXTENSION,
+        KhrSurfaceExtensionInstanceCommands, KhrSwapchainExtensionDeviceCommands, LogicOp,
+        MemoryAllocateInfo, MemoryMapFlags, MemoryPropertyFlags, MemoryRequirements, Offset2D,
+        PhysicalDevice, PhysicalDeviceFeatures, PhysicalDeviceType, Pipeline, PipelineBindPoint,
+        PipelineCache, PipelineColorBlendAttachmentState, PipelineColorBlendStateCreateInfo,
         PipelineInputAssemblyStateCreateInfo, PipelineLayout, PipelineLayoutCreateInfo,
         PipelineMultisampleStateCreateInfo, PipelineRasterizationStateCreateInfo,
         PipelineShaderStageCreateInfo, PipelineStageFlags, PipelineVertexInputStateCreateInfo,
@@ -42,13 +47,13 @@ use vulkanalia::{
         ShaderModule, ShaderModuleCreateInfo, ShaderStageFlags, SharingMode, SubmitInfo,
         SubpassContents, SubpassDependency, SubpassDescription, SuccessCode,
         SurfaceCapabilitiesKHR, SurfaceFormatKHR, SurfaceKHR, SwapchainCreateInfoKHR, SwapchainKHR,
-        TRUE, Viewport, make_version,
+        TRUE, Viewport, WriteDescriptorSet, make_version,
     },
     window::{create_surface, get_required_instance_extensions},
 };
 use winit::window::Window;
 
-use crate::engine::vertex::{INDICES, VERTICES, Vertex};
+use crate::engine::vertex::{INDICES, Mat4, UniformBufferObject, VERTICES, Vertex};
 
 const PORTABILITY_MACOS_VERSION: Version = Version::new(1, 3, 216);
 
@@ -93,6 +98,7 @@ pub struct VulkanApp {
     pub data: VulkanData,
     pub frame: usize,
     pub resized: bool,
+    start: Instant,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -107,6 +113,7 @@ pub struct VulkanData {
     swapchain_extent: Extent2D,
     swapchain_images: Vec<Image>,
     swapchain_image_views: Vec<ImageView>,
+    descriptor_set_layout: DescriptorSetLayout,
     pipeline_layout: PipelineLayout,
     render_pass: RenderPass,
     pipeline: Pipeline,
@@ -121,6 +128,11 @@ pub struct VulkanData {
     vertex_buffer_memory: DeviceMemory,
     index_buffer: Buffer,
     index_buffer_memory: DeviceMemory,
+    uniform_buffers: Vec<Buffer>,
+    uniform_buffers_memory: Vec<DeviceMemory>,
+    descriptor_pool: DescriptorPool,
+    descriptor_sets: Vec<DescriptorSet>,
+    swapchain_min_image_count: u32,
 }
 
 impl VulkanApp {
@@ -136,11 +148,15 @@ impl VulkanApp {
             Self::create_swapchain(window, &instance, &device, &mut data)?;
             Self::create_swapchain_image_views(&device, &mut data)?;
             Self::create_render_pass(&instance, &device, &mut data)?;
+            Self::create_descriptor_set_layout(&device, &mut data)?;
             Self::create_pipeline(&device, &mut data)?;
             Self::create_framebuffers(&device, &mut data)?;
             Self::create_command_pool(&instance, &device, &mut data)?;
             Self::create_vertex_buffer(&instance, &device, &mut data)?;
             Self::create_index_buffer(&instance, &device, &mut data)?;
+            Self::create_uniform_buffers(&instance, &device, &mut data)?;
+            Self::create_descriptor_pool(&device, &mut data)?;
+            Self::create_descriptor_sets(&device, &mut data)?;
             Self::create_command_buffers(&device, &mut data)?;
             Self::create_sync_objects(&device, &mut data)?;
             info!("Woo created everything, hard work ain't it?");
@@ -151,12 +167,13 @@ impl VulkanApp {
                 data,
                 frame: 0,
                 resized: false,
+                start: Instant::now(),
             })
         }
     }
 
     pub unsafe fn render(&mut self, window: &Window) -> Result<()> {
-        debug!("Rendering");
+        trace!("Rendering");
         let in_flight_fence = self.data.in_flight_fences[self.frame];
 
         (unsafe {
@@ -189,10 +206,12 @@ impl VulkanApp {
 
         self.data.images_in_flight[image_index] = in_flight_fence;
 
+        unsafe { self.update_uniform_buffer(image_index) }?;
+
         let wait_semaphores = &[self.data.image_available_semaphore[self.frame]];
         let wait_stages = &[PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
         let command_buffers = &[self.data.command_buffers[image_index]];
-        let signal_semaphores = &[self.data.render_finished_semaphore[self.frame]];
+        let signal_semaphores = &[self.data.render_finished_semaphore[image_index]];
         let submit_info = SubmitInfo::builder()
             .wait_semaphores(wait_semaphores)
             .wait_dst_stage_mask(wait_stages)
@@ -227,6 +246,90 @@ impl VulkanApp {
         }
 
         self.frame = (self.frame + 1) % MAX_FRAMES_IN_FLIGHT;
+
+        Ok(())
+    }
+
+    unsafe fn update_uniform_buffer(&self, image_index: usize) -> Result<()> {
+        let time = self.start.elapsed().as_secs_f32();
+
+        let model = Mat4::from_axis_angle(vec3(0.0, 0.0, 1.0), Deg(90.0) * time);
+
+        let view = Mat4::look_at_rh(
+            point3(2.0, 2.0, 2.0),
+            point3(0.0, 0.0, 0.0),
+            vec3(0.0, 0.0, 1.0),
+        );
+
+        let mut proj = cgmath::perspective(
+            Deg(45.0),
+            self.data.swapchain_extent.width as f32 / self.data.swapchain_extent.height as f32,
+            0.1,
+            10.0,
+        );
+
+        proj[1][1] *= -1.0;
+
+        let ubo = UniformBufferObject { model, view, proj };
+
+        let memory = unsafe {
+            self.device.map_memory(
+                self.data.uniform_buffers_memory[image_index],
+                0,
+                size_of::<UniformBufferObject>() as u64,
+                MemoryMapFlags::empty(),
+            )
+        }?;
+
+        unsafe { copy_nonoverlapping(&ubo, memory.cast(), 1) };
+
+        unsafe {
+            self.device
+                .unmap_memory(self.data.uniform_buffers_memory[image_index])
+        };
+
+        Ok(())
+    }
+
+    unsafe fn create_descriptor_pool(device: &Device, data: &mut VulkanData) -> Result<()> {
+        let ubo_size = DescriptorPoolSize::builder()
+            .type_(DescriptorType::UNIFORM_BUFFER)
+            .descriptor_count(data.swapchain_images.len() as u32);
+
+        let pool_sizes = &[ubo_size];
+        let info = DescriptorPoolCreateInfo::builder()
+            .pool_sizes(pool_sizes)
+            .max_sets(data.swapchain_images.len() as u32);
+
+        data.descriptor_pool = unsafe { device.create_descriptor_pool(&info, None) }?;
+
+        Ok(())
+    }
+
+    unsafe fn create_descriptor_sets(device: &Device, data: &mut VulkanData) -> Result<()> {
+        let layouts = vec![data.descriptor_set_layout; data.swapchain_images.len()];
+        let info = DescriptorSetAllocateInfo::builder()
+            .descriptor_pool(data.descriptor_pool)
+            .set_layouts(&layouts);
+
+        data.descriptor_sets = unsafe { device.allocate_descriptor_sets(&info) }?;
+
+        for i in 0..data.swapchain_images.len() {
+            let info = DescriptorBufferInfo::builder()
+                .buffer(data.uniform_buffers[i])
+                .offset(0)
+                .range(size_of::<UniformBufferObject>() as u64);
+
+            let buffer_info = &[info];
+            let ubo_write = WriteDescriptorSet::builder()
+                .dst_set(data.descriptor_sets[i])
+                .dst_binding(0)
+                .dst_array_element(0)
+                .descriptor_type(DescriptorType::UNIFORM_BUFFER)
+                .buffer_info(buffer_info);
+
+            unsafe { device.update_descriptor_sets(&[ubo_write], &[] as &[CopyDescriptorSet]) };
+        }
 
         Ok(())
     }
@@ -446,6 +549,7 @@ impl VulkanApp {
         let extent = SwapchainSupport::get_swapchain_extent(window, support.capabilities);
 
         let mut image_count = support.capabilities.min_image_count + 1;
+        data.swapchain_min_image_count = image_count;
 
         if support.capabilities.max_image_count != 0
             && image_count > support.capabilities.max_image_count
@@ -517,6 +621,24 @@ impl VulkanApp {
         Ok(())
     }
 
+    unsafe fn create_descriptor_set_layout(device: &Device, data: &mut VulkanData) -> Result<()> {
+        let ubo_binding = DescriptorSetLayoutBinding::builder()
+            .binding(0)
+            .descriptor_type(DescriptorType::UNIFORM_BUFFER)
+            .descriptor_count(1)
+            .stage_flags(ShaderStageFlags::VERTEX);
+
+        let bindings = &[ubo_binding];
+        let info = DescriptorSetLayoutCreateInfo::builder().bindings(bindings);
+
+        data.descriptor_set_layout = unsafe { device.create_descriptor_set_layout(&info, None) }?;
+
+        let set_layouts = &[data.descriptor_set_layout];
+        let layout_info = PipelineLayoutCreateInfo::builder().set_layouts(set_layouts);
+
+        Ok(())
+    }
+
     unsafe fn create_pipeline(device: &Device, data: &mut VulkanData) -> Result<()> {
         let vert = include_bytes!("../../shaders/vert.spv");
         let frag = include_bytes!("../../shaders/frag.spv");
@@ -568,7 +690,7 @@ impl VulkanApp {
             .polygon_mode(PolygonMode::FILL)
             .line_width(1.0)
             .cull_mode(CullModeFlags::BACK)
-            .front_face(FrontFace::CLOCKWISE)
+            .front_face(FrontFace::COUNTER_CLOCKWISE)
             .depth_bias_enable(false);
 
         let multisample_state = PipelineMultisampleStateCreateInfo::builder()
@@ -592,7 +714,8 @@ impl VulkanApp {
             .attachments(attachments)
             .blend_constants([0.0, 0.0, 0.0, 0.0]);
 
-        let layout_info = PipelineLayoutCreateInfo::builder();
+        let set_layouts = &[data.descriptor_set_layout];
+        let layout_info = PipelineLayoutCreateInfo::builder().set_layouts(set_layouts);
 
         data.pipeline_layout = unsafe { device.create_pipeline_layout(&layout_info, None) }?;
 
@@ -757,6 +880,14 @@ impl VulkanApp {
                     0,
                     IndexType::UINT16,
                 );
+                device.cmd_bind_descriptor_sets(
+                    *command_buffer,
+                    PipelineBindPoint::GRAPHICS,
+                    data.pipeline_layout,
+                    0,
+                    &[data.descriptor_sets[i]],
+                    &[],
+                );
                 device.cmd_draw_indexed(*command_buffer, INDICES.len() as u32, 1, 0, 0, 0);
 
                 device.cmd_end_render_pass(*command_buffer);
@@ -771,7 +902,7 @@ impl VulkanApp {
         let semaphore_info = SemaphoreCreateInfo::builder();
         let fence_info = FenceCreateInfo::builder().flags(FenceCreateFlags::SIGNALED);
 
-        for _ in 0..MAX_FRAMES_IN_FLIGHT {
+        for _ in 0..data.swapchain_min_image_count {
             data.image_available_semaphore
                 .push(unsafe { device.create_semaphore(&semaphore_info, None) }?);
             data.render_finished_semaphore
@@ -792,41 +923,50 @@ impl VulkanApp {
 
     unsafe fn recreate_swapchain(&mut self, window: &Window) -> Result<()> {
         debug!("Recreating Swapchain");
-        (unsafe { self.device.device_wait_idle() })?;
-        unsafe { self.destroy_swapchain() };
-        (unsafe { Self::create_swapchain(window, &self.instance, &self.device, &mut self.data) })?;
-        (unsafe { Self::create_swapchain_image_views(&self.device, &mut self.data) })?;
-        (unsafe { Self::create_render_pass(&self.instance, &self.device, &mut self.data) })?;
-        (unsafe { Self::create_pipeline(&self.device, &mut self.data) })?;
-        (unsafe { Self::create_framebuffers(&self.device, &mut self.data) })?;
-        (unsafe { Self::create_command_buffers(&self.device, &mut self.data) })?;
+        unsafe {
+            self.device.device_wait_idle()?;
+            self.destroy_swapchain();
+            Self::create_swapchain(window, &self.instance, &self.device, &mut self.data)?;
+            Self::create_swapchain_image_views(&self.device, &mut self.data)?;
+            Self::create_render_pass(&self.instance, &self.device, &mut self.data)?;
+            Self::create_pipeline(&self.device, &mut self.data)?;
+            Self::create_framebuffers(&self.device, &mut self.data)?;
+            Self::create_uniform_buffers(&self.instance, &self.device, &mut self.data)?;
+            Self::create_descriptor_pool(&self.device, &mut self.data)?;
+            Self::create_descriptor_sets(&self.device, &mut self.data)?;
+            Self::create_command_buffers(&self.device, &mut self.data)?;
+        }
         self.data
             .images_in_flight
             .resize(self.data.swapchain_images.len(), Fence::null());
         Ok(())
     }
 
-    unsafe fn destroy_swapchain(&mut self) {
-        debug!("Destroying Swapchain");
-        unsafe {
-            self.device
-                .free_command_buffers(self.data.command_pool, &self.data.command_buffers)
-        };
-        self.data
-            .framebuffers
-            .iter()
-            .for_each(|f| unsafe { self.device.destroy_framebuffer(*f, None) });
-        unsafe { self.device.destroy_pipeline(self.data.pipeline, None) };
-        unsafe {
-            self.device
-                .destroy_pipeline_layout(self.data.pipeline_layout, None)
-        };
-        unsafe { self.device.destroy_render_pass(self.data.render_pass, None) };
-        self.data
-            .swapchain_image_views
-            .iter()
-            .for_each(|v| unsafe { self.device.destroy_image_view(*v, None) });
-        unsafe { self.device.destroy_swapchain_khr(self.data.swapchain, None) };
+    unsafe fn create_uniform_buffers(
+        instance: &Instance,
+        device: &Device,
+        data: &mut VulkanData,
+    ) -> Result<()> {
+        data.uniform_buffers.clear();
+        data.uniform_buffers_memory.clear();
+
+        for _ in 0..data.swapchain_images.len() {
+            let (uniform_buffer, uniform_buffer_memory) = unsafe {
+                Self::create_buffer(
+                    instance,
+                    device,
+                    data,
+                    size_of::<UniformBufferObject>() as u64,
+                    BufferUsageFlags::UNIFORM_BUFFER,
+                    MemoryPropertyFlags::HOST_COHERENT | MemoryPropertyFlags::HOST_VISIBLE,
+                )
+            }?;
+
+            data.uniform_buffers.push(uniform_buffer);
+            data.uniform_buffers_memory.push(uniform_buffer_memory);
+        }
+
+        Ok(())
     }
 
     unsafe fn create_buffer(
@@ -1004,11 +1144,44 @@ impl VulkanApp {
             .ok_or_else(|| anyhow!("Failed to find suitable memory type."))
     }
 
+    unsafe fn destroy_swapchain(&mut self) {
+        debug!("Destroying Swapchain");
+        unsafe {
+            self.device
+                .destroy_descriptor_pool(self.data.descriptor_pool, None);
+            self.device
+                .free_command_buffers(self.data.command_pool, &self.data.command_buffers);
+            self.data
+                .framebuffers
+                .iter()
+                .for_each(|f| self.device.destroy_framebuffer(*f, None));
+            self.device.destroy_pipeline(self.data.pipeline, None);
+            self.device
+                .destroy_pipeline_layout(self.data.pipeline_layout, None);
+            self.device.destroy_render_pass(self.data.render_pass, None);
+            self.data
+                .swapchain_image_views
+                .iter()
+                .for_each(|v| self.device.destroy_image_view(*v, None));
+            self.device.destroy_swapchain_khr(self.data.swapchain, None)
+        };
+    }
+
     pub unsafe fn destroy(&mut self) {
         unsafe {
+            self.data
+                .uniform_buffers
+                .iter()
+                .for_each(|b| self.device.destroy_buffer(*b, None));
+            self.data
+                .uniform_buffers_memory
+                .iter()
+                .for_each(|m| self.device.free_memory(*m, None));
             self.device.device_wait_idle().unwrap();
 
             self.destroy_swapchain();
+            self.device
+                .destroy_descriptor_set_layout(self.data.descriptor_set_layout, None);
             self.device.destroy_buffer(self.data.index_buffer, None);
             self.device.free_memory(self.data.index_buffer_memory, None);
             self.device.destroy_buffer(self.data.vertex_buffer, None);
