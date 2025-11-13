@@ -16,39 +16,42 @@ use vulkanalia::{
     loader::{LIBRARY, LibloadingLoader},
     vk::{
         AccessFlags, ApplicationInfo, AttachmentDescription, AttachmentLoadOp, AttachmentReference,
-        AttachmentStoreOp, BlendFactor, BlendOp, Bool32, Buffer, BufferCopy, BufferCreateFlags,
-        BufferCreateInfo, BufferMemoryBarrier, BufferUsageFlags, ClearColorValue, ClearValue,
-        ColorComponentFlags, ColorSpaceKHR, CommandBuffer, CommandBufferAllocateInfo,
-        CommandBufferBeginInfo, CommandBufferInheritanceInfo, CommandBufferLevel,
-        CommandBufferUsageFlags, CommandPool, CommandPoolCreateFlags, CommandPoolCreateInfo,
-        ComponentMapping, ComponentSwizzle, CompositeAlphaFlagsKHR, CopyDescriptorSet,
-        CullModeFlags, DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
+        AttachmentStoreOp, BlendFactor, BlendOp, Bool32, BorderColor, Buffer, BufferCopy,
+        BufferCreateFlags, BufferCreateInfo, BufferImageCopy, BufferMemoryBarrier,
+        BufferUsageFlags, ClearColorValue, ClearValue, ColorComponentFlags, ColorSpaceKHR,
+        CommandBuffer, CommandBufferAllocateInfo, CommandBufferBeginInfo,
+        CommandBufferInheritanceInfo, CommandBufferLevel, CommandBufferUsageFlags, CommandPool,
+        CommandPoolCreateFlags, CommandPoolCreateInfo, CompareOp, ComponentMapping,
+        ComponentSwizzle, CompositeAlphaFlagsKHR, CopyDescriptorSet, CullModeFlags,
+        DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
         DebugUtilsMessengerCallbackDataEXT, DebugUtilsMessengerCreateInfoEXT,
-        DebugUtilsMessengerEXT, DependencyFlags, DescriptorBufferInfo, DescriptorPool,
-        DescriptorPoolCreateInfo, DescriptorPoolSize, DescriptorSet, DescriptorSetAllocateInfo,
-        DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
-        DescriptorType, DeviceCreateInfo, DeviceMemory, DeviceQueueCreateInfo, DeviceSize,
-        DeviceV1_0, EXT_DEBUG_UTILS_EXTENSION, EntryV1_0, ErrorCode,
-        ExtDebugUtilsExtensionInstanceCommands, ExtensionName, Extent2D, Extent3D, FALSE, Fence,
-        FenceCreateFlags, FenceCreateInfo, Format, Framebuffer, FramebufferCreateInfo, FrontFace,
-        GraphicsPipelineCreateInfo, Handle, HasBuilder, Image, ImageAspectFlags, ImageCreateFlags,
-        ImageCreateInfo, ImageLayout, ImageMemoryBarrier, ImageSubresourceRange, ImageTiling,
-        ImageType, ImageUsageFlags, ImageView, ImageViewCreateInfo, ImageViewType, IndexType,
-        InstanceCreateFlags, InstanceCreateInfo, InstanceV1_0,
-        KHR_GET_PHYSICAL_DEVICE_PROPERTIES2_EXTENSION, KHR_PORTABILITY_ENUMERATION_EXTENSION,
-        KHR_SWAPCHAIN_EXTENSION, KhrSurfaceExtensionInstanceCommands,
+        DebugUtilsMessengerEXT, DependencyFlags, DescriptorBufferInfo, DescriptorImageInfo,
+        DescriptorPool, DescriptorPoolCreateInfo, DescriptorPoolSize, DescriptorSet,
+        DescriptorSetAllocateInfo, DescriptorSetLayout, DescriptorSetLayoutBinding,
+        DescriptorSetLayoutCreateInfo, DescriptorType, DeviceCreateInfo, DeviceMemory,
+        DeviceQueueCreateInfo, DeviceSize, DeviceV1_0, EXT_DEBUG_UTILS_EXTENSION, EntryV1_0,
+        ErrorCode, ExtDebugUtilsExtensionInstanceCommands, ExtensionName, Extent2D, Extent3D,
+        FALSE, Fence, FenceCreateFlags, FenceCreateInfo, Filter, Format, Framebuffer,
+        FramebufferCreateInfo, FrontFace, GraphicsPipelineCreateInfo, Handle, HasBuilder, Image,
+        ImageAspectFlags, ImageCreateFlags, ImageCreateInfo, ImageLayout, ImageMemoryBarrier,
+        ImageSubresourceLayers, ImageSubresourceRange, ImageTiling, ImageType, ImageUsageFlags,
+        ImageView, ImageViewCreateInfo, ImageViewType, IndexType, InstanceCreateFlags,
+        InstanceCreateInfo, InstanceV1_0, KHR_GET_PHYSICAL_DEVICE_PROPERTIES2_EXTENSION,
+        KHR_PORTABILITY_ENUMERATION_EXTENSION, KHR_SWAPCHAIN_EXTENSION,
+        KHR_TIMELINE_SEMAPHORE_EXTENSION, KhrSurfaceExtensionInstanceCommands,
         KhrSwapchainExtensionDeviceCommands, LogicOp, MemoryAllocateInfo, MemoryBarrier,
-        MemoryMapFlags, MemoryPropertyFlags, MemoryRequirements, Offset2D, PhysicalDevice,
-        PhysicalDeviceFeatures, PhysicalDeviceType, Pipeline, PipelineBindPoint, PipelineCache,
-        PipelineColorBlendAttachmentState, PipelineColorBlendStateCreateInfo,
+        MemoryMapFlags, MemoryPropertyFlags, MemoryRequirements, Offset2D, Offset3D,
+        PhysicalDevice, PhysicalDeviceFeatures, PhysicalDeviceType, Pipeline, PipelineBindPoint,
+        PipelineCache, PipelineColorBlendAttachmentState, PipelineColorBlendStateCreateInfo,
         PipelineInputAssemblyStateCreateInfo, PipelineLayout, PipelineLayoutCreateInfo,
         PipelineMultisampleStateCreateInfo, PipelineRasterizationStateCreateInfo,
         PipelineShaderStageCreateInfo, PipelineStageFlags, PipelineVertexInputStateCreateInfo,
         PipelineViewportStateCreateInfo, PolygonMode, PresentInfoKHR, PresentModeKHR,
         PrimitiveTopology, QUEUE_FAMILY_IGNORED, Queue, QueueFlags, Rect2D, RenderPass,
-        RenderPassBeginInfo, RenderPassCreateInfo, SUBPASS_EXTERNAL, SampleCountFlags, Semaphore,
-        SemaphoreCreateInfo, ShaderModule, ShaderModuleCreateInfo, ShaderStageFlags, SharingMode,
-        SubmitInfo, SubpassContents, SubpassDependency, SubpassDescription, SuccessCode,
+        RenderPassBeginInfo, RenderPassCreateInfo, SUBPASS_EXTERNAL, SampleCountFlags, Sampler,
+        SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode, Semaphore, SemaphoreCreateInfo,
+        ShaderModule, ShaderModuleCreateInfo, ShaderStageFlags, SharingMode, SubmitInfo,
+        SubpassContents, SubpassDependency, SubpassDescription, SuccessCode,
         SurfaceCapabilitiesKHR, SurfaceFormatKHR, SurfaceKHR, SwapchainCreateInfoKHR, SwapchainKHR,
         TRUE, Viewport, WriteDescriptorSet, make_version,
     },
@@ -63,7 +66,10 @@ const PORTABILITY_MACOS_VERSION: Version = Version::new(1, 3, 216);
 const VALIDATION_ENABLED: bool = cfg!(debug_assertions);
 const VALIDATION_LAYER: ExtensionName = ExtensionName::from_bytes(b"VK_LAYER_KHRONOS_validation");
 
-const DEVICE_EXTENSIONS: &[ExtensionName] = &[KHR_SWAPCHAIN_EXTENSION.name];
+const DEVICE_EXTENSIONS: &[ExtensionName] = &[
+    KHR_SWAPCHAIN_EXTENSION.name,
+    KHR_TIMELINE_SEMAPHORE_EXTENSION.name,
+];
 
 const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
@@ -139,6 +145,7 @@ pub struct VulkanData {
     texture_image: Image,
     texture_image_memory: DeviceMemory,
     texture_image_view: ImageView,
+    texture_sampler: Sampler,
 }
 
 impl VulkanApp {
@@ -161,6 +168,7 @@ impl VulkanApp {
             Self::create_texture_image(&instance, &device, &mut data)?;
             Self::create_texture_image_view(&device, &mut data)?;
             Self::create_vertex_buffer(&instance, &device, &mut data)?;
+            Self::create_texture_sampler(&device, &mut data)?;
             Self::create_index_buffer(&instance, &device, &mut data)?;
             Self::create_uniform_buffers(&instance, &device, &mut data)?;
             Self::create_descriptor_pool(&device, &mut data)?;
@@ -304,7 +312,11 @@ impl VulkanApp {
             .type_(DescriptorType::UNIFORM_BUFFER)
             .descriptor_count(data.swapchain_images.len() as u32);
 
-        let pool_sizes = &[ubo_size];
+        let sampler_size = DescriptorPoolSize::builder()
+            .type_(DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .descriptor_count(data.swapchain_images.len() as u32);
+
+        let pool_sizes = &[ubo_size, sampler_size];
         let info = DescriptorPoolCreateInfo::builder()
             .pool_sizes(pool_sizes)
             .max_sets(data.swapchain_images.len() as u32);
@@ -336,7 +348,25 @@ impl VulkanApp {
                 .descriptor_type(DescriptorType::UNIFORM_BUFFER)
                 .buffer_info(buffer_info);
 
-            unsafe { device.update_descriptor_sets(&[ubo_write], &[] as &[CopyDescriptorSet]) };
+            let info = DescriptorImageInfo::builder()
+                .image_layout(ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                .image_view(data.texture_image_view)
+                .sampler(data.texture_sampler);
+
+            let image_info = &[info];
+            let sampler_write = WriteDescriptorSet::builder()
+                .dst_set(data.descriptor_sets[i])
+                .dst_binding(1)
+                .dst_array_element(0)
+                .descriptor_type(DescriptorType::COMBINED_IMAGE_SAMPLER)
+                .image_info(image_info);
+
+            unsafe {
+                device.update_descriptor_sets(
+                    &[ubo_write, sampler_write],
+                    &[] as &[CopyDescriptorSet],
+                )
+            };
         }
 
         Ok(())
@@ -474,7 +504,7 @@ impl VulkanApp {
     unsafe fn create_image(
         instance: &Instance,
         device: &Device,
-        data: &AppData,
+        data: &VulkanData,
         width: u32,
         height: u32,
         format: Format,
@@ -517,6 +547,29 @@ impl VulkanApp {
         (unsafe { device.bind_image_memory(image, image_memory, 0) })?;
 
         Ok((image, image_memory))
+    }
+
+    unsafe fn create_texture_sampler(device: &Device, data: &mut VulkanData) -> Result<()> {
+        let info = SamplerCreateInfo::builder()
+            .mag_filter(Filter::LINEAR)
+            .min_filter(Filter::LINEAR)
+            .address_mode_u(SamplerAddressMode::REPEAT)
+            .address_mode_v(SamplerAddressMode::REPEAT)
+            .address_mode_w(SamplerAddressMode::REPEAT)
+            .anisotropy_enable(true)
+            .max_anisotropy(16.0)
+            .border_color(BorderColor::INT_OPAQUE_BLACK)
+            .unnormalized_coordinates(false)
+            .compare_enable(false)
+            .compare_op(CompareOp::ALWAYS)
+            .mipmap_mode(SamplerMipmapMode::LINEAR)
+            .mip_lod_bias(0.0)
+            .min_lod(0.0)
+            .max_lod(0.0);
+
+        data.texture_sampler = unsafe { device.create_sampler(&info, None)? };
+
+        Ok(())
     }
 
     unsafe fn copy_buffer_to_image(
@@ -680,6 +733,9 @@ impl VulkanApp {
                 "Missing geometry shader support."
             )));
         }
+        if features.sampler_anisotropy != TRUE {
+            return Err(anyhow!(SuitabilityError("No sampler anisotropy.")));
+        }
 
         unsafe { QueueFamilyIndices::get(instance, data, physical_device)? };
         unsafe { Self::check_physical_device_extensions(instance, physical_device) }?;
@@ -748,7 +804,7 @@ impl VulkanApp {
             extensions.push(KHR_PORTABILITY_ENUMERATION_EXTENSION.name.as_ptr());
         }
 
-        let features = PhysicalDeviceFeatures::builder();
+        let features = PhysicalDeviceFeatures::builder().sampler_anisotropy(true);
 
         let info = DeviceCreateInfo::builder()
             .queue_create_infos(&queue_infos)
@@ -825,7 +881,13 @@ impl VulkanApp {
             .descriptor_count(1)
             .stage_flags(ShaderStageFlags::VERTEX);
 
-        let bindings = &[ubo_binding];
+        let sampler_binding = DescriptorSetLayoutBinding::builder()
+            .binding(1)
+            .descriptor_type(DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .descriptor_count(1)
+            .stage_flags(ShaderStageFlags::FRAGMENT);
+
+        let bindings = &[ubo_binding, sampler_binding];
         let info = DescriptorSetLayoutCreateInfo::builder().bindings(bindings);
 
         data.descriptor_set_layout = unsafe { device.create_descriptor_set_layout(&info, None) }?;
@@ -1459,6 +1521,7 @@ impl VulkanApp {
             self.device.device_wait_idle().unwrap();
 
             self.destroy_swapchain();
+            self.device.destroy_sampler(self.data.texture_sampler, None);
             self.device
                 .destroy_image_view(self.data.texture_image_view, None);
             self.device.destroy_image(self.data.texture_image, None);

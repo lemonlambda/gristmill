@@ -15,11 +15,16 @@ pub type Mat4 = cgmath::Matrix4<f32>;
 pub struct Vertex {
     pos: Vec3,
     color: Vec3,
+    tex_coord: Vec2,
 }
 
 impl Vertex {
-    const fn new(pos: Vec3, color: Vec3) -> Self {
-        Self { pos, color }
+    const fn new(pos: Vec3, color: Vec3, tex_coord: Vec2) -> Self {
+        Self {
+            pos,
+            color,
+            tex_coord,
+        }
     }
     pub fn binding_description() -> VertexInputBindingDescription {
         VertexInputBindingDescription::builder()
@@ -28,7 +33,7 @@ impl Vertex {
             .input_rate(VertexInputRate::VERTEX)
             .build()
     }
-    pub fn attribute_descriptions() -> [VertexInputAttributeDescription; 2] {
+    pub fn attribute_descriptions() -> [VertexInputAttributeDescription; 3] {
         let pos = VertexInputAttributeDescription::builder()
             .binding(0)
             .location(0)
@@ -43,15 +48,22 @@ impl Vertex {
             .offset(size_of::<Vec2>() as u32)
             .build();
 
-        [pos, color]
+        let tex_coord = VertexInputAttributeDescription::builder()
+            .binding(0)
+            .location(2)
+            .format(Format::R32G32_SFLOAT)
+            .offset((size_of::<Vec2>() + size_of::<Vec3>()) as u32)
+            .build();
+
+        [pos, color, tex_coord]
     }
 }
 
 pub static VERTICES: [Vertex; 4] = [
-    Vertex::new(vec3(0.0, 0.5, 0.0), vec3(1.0, 0.0, 0.0)),
-    Vertex::new(vec3(-0.5, -0.25, 0.0), vec3(0.0, 1.0, 0.0)),
-    Vertex::new(vec3(0.5, -0.25, 0.0), vec3(0.0, 0.0, 1.0)),
-    Vertex::new(vec3(0.0, 0.0, 5.0), vec3(1.0, 1.0, 1.0)),
+    Vertex::new(vec3(0.0, 0.5, 0.0), vec3(1.0, 0.0, 0.0), vec2(1.0, 0.0)),
+    Vertex::new(vec3(-0.5, -0.25, 0.0), vec3(0.0, 1.0, 0.0), vec2(0.0, 0.0)),
+    Vertex::new(vec3(0.5, -0.25, 0.0), vec3(0.0, 0.0, 1.0), vec2(0.0, 1.0)),
+    Vertex::new(vec3(0.0, 0.0, 5.0), vec3(1.0, 1.0, 1.0), vec2(1.0, 1.0)),
 ];
 
 pub const INDICES: &[u16] = &[0, 1, 2, 1, 2, 3];
