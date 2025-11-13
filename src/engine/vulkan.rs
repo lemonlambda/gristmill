@@ -1,10 +1,11 @@
 use anyhow::{Result, anyhow};
 use cgmath::{Deg, point3, vec3};
-use image::imageops::FilterType::Lanczos3;
 use log::*;
+use png::Decoder;
 use std::{
     collections::HashSet,
     ffi::{CStr, c_void},
+    fs::File,
     intrinsics::copy_nonoverlapping,
     time::Instant,
 };
@@ -16,36 +17,38 @@ use vulkanalia::{
     vk::{
         AccessFlags, ApplicationInfo, AttachmentDescription, AttachmentLoadOp, AttachmentReference,
         AttachmentStoreOp, BlendFactor, BlendOp, Bool32, Buffer, BufferCopy, BufferCreateFlags,
-        BufferCreateInfo, BufferUsageFlags, ClearColorValue, ClearValue, ColorComponentFlags,
-        ColorSpaceKHR, CommandBuffer, CommandBufferAllocateInfo, CommandBufferBeginInfo,
-        CommandBufferInheritanceInfo, CommandBufferLevel, CommandBufferUsageFlags, CommandPool,
-        CommandPoolCreateFlags, CommandPoolCreateInfo, ComponentMapping, ComponentSwizzle,
-        CompositeAlphaFlagsKHR, CopyDescriptorSet, CullModeFlags,
-        DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
+        BufferCreateInfo, BufferMemoryBarrier, BufferUsageFlags, ClearColorValue, ClearValue,
+        ColorComponentFlags, ColorSpaceKHR, CommandBuffer, CommandBufferAllocateInfo,
+        CommandBufferBeginInfo, CommandBufferInheritanceInfo, CommandBufferLevel,
+        CommandBufferUsageFlags, CommandPool, CommandPoolCreateFlags, CommandPoolCreateInfo,
+        ComponentMapping, ComponentSwizzle, CompositeAlphaFlagsKHR, CopyDescriptorSet,
+        CullModeFlags, DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
         DebugUtilsMessengerCallbackDataEXT, DebugUtilsMessengerCreateInfoEXT,
-        DebugUtilsMessengerEXT, DescriptorBufferInfo, DescriptorPool, DescriptorPoolCreateInfo,
-        DescriptorPoolSize, DescriptorSet, DescriptorSetAllocateInfo, DescriptorSetLayout,
-        DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo, DescriptorType,
-        DeviceCreateInfo, DeviceMemory, DeviceQueueCreateInfo, DeviceSize, DeviceV1_0,
-        EXT_DEBUG_UTILS_EXTENSION, EntryV1_0, ErrorCode, ExtDebugUtilsExtensionInstanceCommands,
-        ExtensionName, Extent2D, FALSE, Fence, FenceCreateFlags, FenceCreateInfo, Format,
-        Framebuffer, FramebufferCreateInfo, FrontFace, GraphicsPipelineCreateInfo, Handle,
-        HasBuilder, Image, ImageAspectFlags, ImageLayout, ImageSubresourceRange, ImageUsageFlags,
-        ImageView, ImageViewCreateInfo, ImageViewType, IndexType, InstanceCreateFlags,
-        InstanceCreateInfo, InstanceV1_0, KHR_GET_PHYSICAL_DEVICE_PROPERTIES2_EXTENSION,
-        KHR_PORTABILITY_ENUMERATION_EXTENSION, KHR_SWAPCHAIN_EXTENSION,
-        KhrSurfaceExtensionInstanceCommands, KhrSwapchainExtensionDeviceCommands, LogicOp,
-        MemoryAllocateInfo, MemoryMapFlags, MemoryPropertyFlags, MemoryRequirements, Offset2D,
-        PhysicalDevice, PhysicalDeviceFeatures, PhysicalDeviceType, Pipeline, PipelineBindPoint,
-        PipelineCache, PipelineColorBlendAttachmentState, PipelineColorBlendStateCreateInfo,
+        DebugUtilsMessengerEXT, DependencyFlags, DescriptorBufferInfo, DescriptorPool,
+        DescriptorPoolCreateInfo, DescriptorPoolSize, DescriptorSet, DescriptorSetAllocateInfo,
+        DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
+        DescriptorType, DeviceCreateInfo, DeviceMemory, DeviceQueueCreateInfo, DeviceSize,
+        DeviceV1_0, EXT_DEBUG_UTILS_EXTENSION, EntryV1_0, ErrorCode,
+        ExtDebugUtilsExtensionInstanceCommands, ExtensionName, Extent2D, Extent3D, FALSE, Fence,
+        FenceCreateFlags, FenceCreateInfo, Format, Framebuffer, FramebufferCreateInfo, FrontFace,
+        GraphicsPipelineCreateInfo, Handle, HasBuilder, Image, ImageAspectFlags, ImageCreateFlags,
+        ImageCreateInfo, ImageLayout, ImageMemoryBarrier, ImageSubresourceRange, ImageTiling,
+        ImageType, ImageUsageFlags, ImageView, ImageViewCreateInfo, ImageViewType, IndexType,
+        InstanceCreateFlags, InstanceCreateInfo, InstanceV1_0,
+        KHR_GET_PHYSICAL_DEVICE_PROPERTIES2_EXTENSION, KHR_PORTABILITY_ENUMERATION_EXTENSION,
+        KHR_SWAPCHAIN_EXTENSION, KhrSurfaceExtensionInstanceCommands,
+        KhrSwapchainExtensionDeviceCommands, LogicOp, MemoryAllocateInfo, MemoryBarrier,
+        MemoryMapFlags, MemoryPropertyFlags, MemoryRequirements, Offset2D, PhysicalDevice,
+        PhysicalDeviceFeatures, PhysicalDeviceType, Pipeline, PipelineBindPoint, PipelineCache,
+        PipelineColorBlendAttachmentState, PipelineColorBlendStateCreateInfo,
         PipelineInputAssemblyStateCreateInfo, PipelineLayout, PipelineLayoutCreateInfo,
         PipelineMultisampleStateCreateInfo, PipelineRasterizationStateCreateInfo,
         PipelineShaderStageCreateInfo, PipelineStageFlags, PipelineVertexInputStateCreateInfo,
         PipelineViewportStateCreateInfo, PolygonMode, PresentInfoKHR, PresentModeKHR,
-        PrimitiveTopology, Queue, QueueFlags, Rect2D, RenderPass, RenderPassBeginInfo,
-        RenderPassCreateInfo, SUBPASS_EXTERNAL, SampleCountFlags, Semaphore, SemaphoreCreateInfo,
-        ShaderModule, ShaderModuleCreateInfo, ShaderStageFlags, SharingMode, SubmitInfo,
-        SubpassContents, SubpassDependency, SubpassDescription, SuccessCode,
+        PrimitiveTopology, QUEUE_FAMILY_IGNORED, Queue, QueueFlags, Rect2D, RenderPass,
+        RenderPassBeginInfo, RenderPassCreateInfo, SUBPASS_EXTERNAL, SampleCountFlags, Semaphore,
+        SemaphoreCreateInfo, ShaderModule, ShaderModuleCreateInfo, ShaderStageFlags, SharingMode,
+        SubmitInfo, SubpassContents, SubpassDependency, SubpassDescription, SuccessCode,
         SurfaceCapabilitiesKHR, SurfaceFormatKHR, SurfaceKHR, SwapchainCreateInfoKHR, SwapchainKHR,
         TRUE, Viewport, WriteDescriptorSet, make_version,
     },
@@ -133,6 +136,9 @@ pub struct VulkanData {
     descriptor_pool: DescriptorPool,
     descriptor_sets: Vec<DescriptorSet>,
     swapchain_min_image_count: u32,
+    texture_image: Image,
+    texture_image_memory: DeviceMemory,
+    texture_image_view: ImageView,
 }
 
 impl VulkanApp {
@@ -152,6 +158,8 @@ impl VulkanApp {
             Self::create_pipeline(&device, &mut data)?;
             Self::create_framebuffers(&device, &mut data)?;
             Self::create_command_pool(&instance, &device, &mut data)?;
+            Self::create_texture_image(&instance, &device, &mut data)?;
+            Self::create_texture_image_view(&device, &mut data)?;
             Self::create_vertex_buffer(&instance, &device, &mut data)?;
             Self::create_index_buffer(&instance, &device, &mut data)?;
             Self::create_uniform_buffers(&instance, &device, &mut data)?;
@@ -330,6 +338,226 @@ impl VulkanApp {
 
             unsafe { device.update_descriptor_sets(&[ubo_write], &[] as &[CopyDescriptorSet]) };
         }
+
+        Ok(())
+    }
+
+    unsafe fn create_texture_image(
+        instance: &Instance,
+        device: &Device,
+        data: &mut VulkanData,
+    ) -> Result<()> {
+        let image = File::open("resources/texture.png")?;
+
+        let decoder = png::Decoder::new(image);
+        let mut reader = decoder.read_info()?;
+
+        let mut pixels = vec![0; reader.info().raw_bytes()];
+        reader.next_frame(&mut pixels)?;
+
+        let size = reader.info().raw_bytes() as u64;
+        let (width, height) = reader.info().size();
+
+        let (staging_buffer, staging_buffer_memory) = unsafe {
+            Self::create_buffer(
+                instance,
+                device,
+                data,
+                size,
+                BufferUsageFlags::TRANSFER_SRC,
+                MemoryPropertyFlags::HOST_COHERENT | MemoryPropertyFlags::HOST_VISIBLE,
+            )
+        }?;
+
+        let memory =
+            unsafe { device.map_memory(staging_buffer_memory, 0, size, MemoryMapFlags::empty()) }?;
+
+        unsafe { copy_nonoverlapping(pixels.as_ptr(), memory.cast(), pixels.len()) };
+
+        unsafe { device.unmap_memory(staging_buffer_memory) };
+
+        let (texture_image, texture_image_memory) = unsafe {
+            Self::create_image(
+                instance,
+                device,
+                data,
+                width,
+                height,
+                Format::R8G8B8A8_SRGB,
+                ImageTiling::OPTIMAL,
+                ImageUsageFlags::SAMPLED | ImageUsageFlags::TRANSFER_DST,
+                MemoryPropertyFlags::DEVICE_LOCAL,
+            )
+        }?;
+
+        data.texture_image = texture_image;
+        data.texture_image_memory = texture_image_memory;
+
+        (unsafe {
+            Self::transition_image_layout(
+                device,
+                data,
+                data.texture_image,
+                Format::R8G8B8A8_SRGB,
+                ImageLayout::UNDEFINED,
+                ImageLayout::TRANSFER_DST_OPTIMAL,
+            )
+        })?;
+
+        (unsafe {
+            Self::copy_buffer_to_image(
+                device,
+                data,
+                staging_buffer,
+                data.texture_image,
+                width,
+                height,
+            )
+        })?;
+
+        (unsafe {
+            Self::transition_image_layout(
+                device,
+                data,
+                data.texture_image,
+                Format::R8G8B8A8_SRGB,
+                ImageLayout::TRANSFER_DST_OPTIMAL,
+                ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            )
+        })?;
+
+        // Cleanup
+
+        unsafe { device.destroy_buffer(staging_buffer, None) };
+        unsafe { device.free_memory(staging_buffer_memory, None) };
+
+        Ok(())
+    }
+
+    unsafe fn begin_single_time_commands(
+        device: &Device,
+        data: &VulkanData,
+    ) -> Result<CommandBuffer> {
+        let info = CommandBufferAllocateInfo::builder()
+            .level(CommandBufferLevel::PRIMARY)
+            .command_pool(data.command_pool)
+            .command_buffer_count(1);
+
+        let command_buffer = unsafe { device.allocate_command_buffers(&info) }?[0];
+
+        let info =
+            CommandBufferBeginInfo::builder().flags(CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+
+        (unsafe { device.begin_command_buffer(command_buffer, &info) })?;
+
+        Ok(command_buffer)
+    }
+
+    unsafe fn end_single_time_commands(
+        device: &Device,
+        data: &VulkanData,
+        command_buffer: CommandBuffer,
+    ) -> Result<()> {
+        (unsafe { device.end_command_buffer(command_buffer) })?;
+
+        let command_buffers = &[command_buffer];
+        let info = SubmitInfo::builder().command_buffers(command_buffers);
+
+        (unsafe { device.queue_submit(data.graphics_queue, &[info], Fence::null()) })?;
+        (unsafe { device.queue_wait_idle(data.graphics_queue) })?;
+
+        unsafe { device.free_command_buffers(data.command_pool, &[command_buffer]) };
+
+        Ok(())
+    }
+
+    unsafe fn create_image(
+        instance: &Instance,
+        device: &Device,
+        data: &AppData,
+        width: u32,
+        height: u32,
+        format: Format,
+        tiling: ImageTiling,
+        usage: ImageUsageFlags,
+        properties: MemoryPropertyFlags,
+    ) -> Result<(Image, DeviceMemory)> {
+        // Image
+
+        let info = ImageCreateInfo::builder()
+            .image_type(ImageType::_2D)
+            .extent(Extent3D {
+                width,
+                height,
+                depth: 1,
+            })
+            .mip_levels(1)
+            .array_layers(1)
+            .format(format)
+            .tiling(tiling)
+            .initial_layout(ImageLayout::UNDEFINED)
+            .usage(usage)
+            .sharing_mode(SharingMode::EXCLUSIVE)
+            .samples(SampleCountFlags::_1);
+
+        let image = unsafe { device.create_image(&info, None) }?;
+
+        // Memory
+
+        let requirements = unsafe { device.get_image_memory_requirements(image) };
+
+        let info = MemoryAllocateInfo::builder()
+            .allocation_size(requirements.size)
+            .memory_type_index(unsafe {
+                Self::get_memory_type_index(instance, data, properties, requirements)
+            }?);
+
+        let image_memory = unsafe { device.allocate_memory(&info, None) }?;
+
+        (unsafe { device.bind_image_memory(image, image_memory, 0) })?;
+
+        Ok((image, image_memory))
+    }
+
+    unsafe fn copy_buffer_to_image(
+        device: &Device,
+        data: &VulkanData,
+        buffer: Buffer,
+        image: Image,
+        width: u32,
+        height: u32,
+    ) -> Result<()> {
+        let command_buffer = unsafe { Self::begin_single_time_commands(device, data) }?;
+
+        let subresource = ImageSubresourceLayers::builder()
+            .aspect_mask(ImageAspectFlags::COLOR)
+            .mip_level(0)
+            .base_array_layer(0)
+            .layer_count(1);
+
+        let region = BufferImageCopy::builder()
+            .buffer_offset(0)
+            .buffer_row_length(0)
+            .buffer_image_height(0)
+            .image_subresource(subresource)
+            .image_offset(Offset3D { x: 0, y: 0, z: 0 })
+            .image_extent(Extent3D {
+                width,
+                height,
+                depth: 1,
+            });
+
+        unsafe {
+            device.cmd_copy_buffer_to_image(
+                command_buffer,
+                buffer,
+                image,
+                ImageLayout::TRANSFER_DST_OPTIMAL,
+                &[region],
+            )
+        };
+
+        (unsafe { Self::end_single_time_commands(device, data, command_buffer) })?;
 
         Ok(())
     }
@@ -587,37 +815,6 @@ impl VulkanApp {
         data.swapchain_format = surface_format.format;
         data.swapchain_extent = extent;
 
-        Ok(())
-    }
-
-    unsafe fn create_swapchain_image_views(device: &Device, data: &mut VulkanData) -> Result<()> {
-        data.swapchain_image_views = data
-            .swapchain_images
-            .iter()
-            .map(|i| {
-                let components = ComponentMapping::builder()
-                    .r(ComponentSwizzle::IDENTITY)
-                    .g(ComponentSwizzle::IDENTITY)
-                    .b(ComponentSwizzle::IDENTITY)
-                    .a(ComponentSwizzle::IDENTITY);
-
-                let subresource_range = ImageSubresourceRange::builder()
-                    .aspect_mask(ImageAspectFlags::COLOR)
-                    .base_mip_level(0)
-                    .level_count(1)
-                    .base_array_layer(0)
-                    .layer_count(1);
-
-                let info = ImageViewCreateInfo::builder()
-                    .image(*i)
-                    .view_type(ImageViewType::_2D)
-                    .format(data.swapchain_format)
-                    .components(components)
-                    .subresource_range(subresource_range);
-
-                unsafe { device.create_image_view(&info, None) }
-            })
-            .collect::<Result<Vec<_>, _>>()?;
         Ok(())
     }
 
@@ -1051,7 +1248,7 @@ impl VulkanApp {
         device: &Device,
         data: &mut VulkanData,
     ) -> Result<()> {
-        let size = (size_of::<u16>() * INDICES.len()) as u64;
+        let size = std::mem::size_of_val(INDICES) as u64;
 
         let (staging_buffer, staging_buffer_memory) = unsafe {
             Self::create_buffer(
@@ -1100,29 +1297,73 @@ impl VulkanApp {
         destination: Buffer,
         size: DeviceSize,
     ) -> Result<()> {
-        let info = CommandBufferAllocateInfo::builder()
-            .level(CommandBufferLevel::PRIMARY)
-            .command_pool(data.command_pool)
-            .command_buffer_count(1);
-
-        let command_buffer = unsafe { device.allocate_command_buffers(&info) }?[0];
-
-        let info =
-            CommandBufferBeginInfo::builder().flags(CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-
-        (unsafe { device.begin_command_buffer(command_buffer, &info) })?;
+        let command_buffer = unsafe { Self::begin_single_time_commands(device, data) }?;
 
         let regions = BufferCopy::builder().size(size);
         unsafe { device.cmd_copy_buffer(command_buffer, source, destination, &[regions]) };
 
-        (unsafe { device.end_command_buffer(command_buffer) })?;
+        (unsafe { Self::end_single_time_commands(device, data, command_buffer) })?;
 
-        let command_buffers = &[command_buffer];
-        let info = SubmitInfo::builder().command_buffers(command_buffers);
+        Ok(())
+    }
 
-        (unsafe { device.queue_submit(data.graphics_queue, &[info], Fence::null()) })?;
-        (unsafe { device.queue_wait_idle(data.graphics_queue) })?;
-        unsafe { device.free_command_buffers(data.command_pool, &[command_buffer]) };
+    unsafe fn transition_image_layout(
+        device: &Device,
+        data: &VulkanData,
+        image: Image,
+        format: Format,
+        old_layout: ImageLayout,
+        new_layout: ImageLayout,
+    ) -> Result<()> {
+        let (src_access_mask, dst_access_mask, src_stage_mask, dst_stage_mask) =
+            match (old_layout, new_layout) {
+                (ImageLayout::UNDEFINED, ImageLayout::TRANSFER_DST_OPTIMAL) => (
+                    AccessFlags::empty(),
+                    AccessFlags::TRANSFER_WRITE,
+                    PipelineStageFlags::TOP_OF_PIPE,
+                    PipelineStageFlags::TRANSFER,
+                ),
+                (ImageLayout::TRANSFER_DST_OPTIMAL, ImageLayout::SHADER_READ_ONLY_OPTIMAL) => (
+                    AccessFlags::TRANSFER_WRITE,
+                    AccessFlags::SHADER_READ,
+                    PipelineStageFlags::TRANSFER,
+                    PipelineStageFlags::FRAGMENT_SHADER,
+                ),
+                _ => return Err(anyhow!("Unsupported image layout transition!")),
+            };
+
+        let command_buffer = unsafe { Self::begin_single_time_commands(device, data) }?;
+
+        let subresource = ImageSubresourceRange::builder()
+            .aspect_mask(ImageAspectFlags::COLOR)
+            .base_mip_level(0)
+            .level_count(1)
+            .base_array_layer(0)
+            .layer_count(1);
+
+        let barrier = ImageMemoryBarrier::builder()
+            .old_layout(old_layout)
+            .new_layout(new_layout)
+            .src_queue_family_index(QUEUE_FAMILY_IGNORED)
+            .dst_queue_family_index(QUEUE_FAMILY_IGNORED)
+            .image(image)
+            .subresource_range(subresource)
+            .src_access_mask(src_access_mask)
+            .dst_access_mask(dst_access_mask);
+
+        unsafe {
+            device.cmd_pipeline_barrier(
+                command_buffer,
+                src_stage_mask,
+                dst_stage_mask,
+                DependencyFlags::empty(),
+                &[] as &[MemoryBarrier],
+                &[] as &[BufferMemoryBarrier],
+                &[barrier],
+            )
+        };
+
+        (unsafe { Self::end_single_time_commands(device, data, command_buffer) })?;
 
         Ok(())
     }
@@ -1142,6 +1383,44 @@ impl VulkanApp {
                 suitable && memory_type.property_flags.contains(properties)
             })
             .ok_or_else(|| anyhow!("Failed to find suitable memory type."))
+    }
+
+    unsafe fn create_texture_image_view(device: &Device, data: &mut VulkanData) -> Result<()> {
+        data.texture_image_view =
+            unsafe { Self::create_image_view(device, data.texture_image, Format::R8G8B8A8_SRGB) }?;
+
+        Ok(())
+    }
+
+    unsafe fn create_swapchain_image_views(device: &Device, data: &mut VulkanData) -> Result<()> {
+        data.swapchain_image_views = data
+            .swapchain_images
+            .iter()
+            .map(|i| unsafe { Self::create_image_view(device, *i, data.swapchain_format) })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(())
+    }
+
+    unsafe fn create_image_view(
+        device: &Device,
+        image: Image,
+        format: Format,
+    ) -> Result<ImageView> {
+        let subresource_range = ImageSubresourceRange::builder()
+            .aspect_mask(ImageAspectFlags::COLOR)
+            .base_mip_level(0)
+            .level_count(1)
+            .base_array_layer(0)
+            .layer_count(1);
+
+        let info = ImageViewCreateInfo::builder()
+            .image(image)
+            .view_type(ImageViewType::_2D)
+            .format(format)
+            .subresource_range(subresource_range);
+
+        Ok(unsafe { device.create_image_view(&info, None) }?)
     }
 
     unsafe fn destroy_swapchain(&mut self) {
@@ -1180,6 +1459,11 @@ impl VulkanApp {
             self.device.device_wait_idle().unwrap();
 
             self.destroy_swapchain();
+            self.device
+                .destroy_image_view(self.data.texture_image_view, None);
+            self.device.destroy_image(self.data.texture_image, None);
+            self.device
+                .free_memory(self.data.texture_image_memory, None);
             self.device
                 .destroy_descriptor_set_layout(self.data.descriptor_set_layout, None);
             self.device.destroy_buffer(self.data.index_buffer, None);
