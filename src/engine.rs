@@ -1,8 +1,6 @@
 use anyhow::Result;
 use log::info;
-use vulkanalia::vk::DeviceV1_0;
 use winit::event::{Event, WindowEvent};
-use winit::event_loop::ControlFlow;
 use winit::window::{Window, WindowBuilder};
 use winit::{dpi::LogicalSize, event_loop::EventLoop};
 

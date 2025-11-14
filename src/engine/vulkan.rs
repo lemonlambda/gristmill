@@ -1,12 +1,11 @@
 use anyhow::{Result, anyhow};
 use cgmath::{Deg, point3, vec3};
 use log::*;
-use png::Decoder;
 use std::{
     collections::HashSet,
     ffi::{CStr, c_void},
     fs::File,
-    intrinsics::copy_nonoverlapping,
+    ptr::copy_nonoverlapping,
     time::Instant,
 };
 use thiserror::Error;
@@ -16,13 +15,11 @@ use vulkanalia::{
     loader::{LIBRARY, LibloadingLoader},
     vk::{
         AccessFlags, ApplicationInfo, AttachmentDescription, AttachmentLoadOp, AttachmentReference,
-        AttachmentStoreOp, BlendFactor, BlendOp, Bool32, BorderColor, Buffer, BufferCopy,
-        BufferCreateFlags, BufferCreateInfo, BufferImageCopy, BufferMemoryBarrier,
+        AttachmentStoreOp, BlendFactor, BlendOp, Bool32, BorderColor, Buffer, BufferCopy, BufferCreateInfo, BufferImageCopy, BufferMemoryBarrier,
         BufferUsageFlags, ClearColorValue, ClearDepthStencilValue, ClearValue, ColorComponentFlags,
         ColorSpaceKHR, CommandBuffer, CommandBufferAllocateInfo, CommandBufferBeginInfo,
         CommandBufferInheritanceInfo, CommandBufferLevel, CommandBufferUsageFlags, CommandPool,
-        CommandPoolCreateFlags, CommandPoolCreateInfo, CompareOp, ComponentMapping,
-        ComponentSwizzle, CompositeAlphaFlagsKHR, CopyDescriptorSet, CullModeFlags,
+        CommandPoolCreateFlags, CommandPoolCreateInfo, CompareOp, CompositeAlphaFlagsKHR, CopyDescriptorSet, CullModeFlags,
         DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
         DebugUtilsMessengerCallbackDataEXT, DebugUtilsMessengerCreateInfoEXT,
         DebugUtilsMessengerEXT, DependencyFlags, DescriptorBufferInfo, DescriptorImageInfo,
@@ -33,7 +30,7 @@ use vulkanalia::{
         ErrorCode, ExtDebugUtilsExtensionInstanceCommands, ExtensionName, Extent2D, Extent3D,
         FALSE, Fence, FenceCreateFlags, FenceCreateInfo, Filter, Format, FormatFeatureFlags,
         Framebuffer, FramebufferCreateInfo, FrontFace, GraphicsPipelineCreateInfo, Handle,
-        HasBuilder, Image, ImageAspectFlags, ImageCreateFlags, ImageCreateInfo, ImageLayout,
+        HasBuilder, Image, ImageAspectFlags, ImageCreateInfo, ImageLayout,
         ImageMemoryBarrier, ImageSubresourceLayers, ImageSubresourceRange, ImageTiling, ImageType,
         ImageUsageFlags, ImageView, ImageViewCreateInfo, ImageViewType, IndexType,
         InstanceCreateFlags, InstanceCreateInfo, InstanceV1_0,
@@ -272,7 +269,7 @@ impl VulkanApp {
     }
 
     unsafe fn update_uniform_buffer(&self, image_index: usize) -> Result<()> {
-        let time = self.start.elapsed().as_secs_f32();
+        let _time = self.start.elapsed().as_secs_f32();
 
         let view = Mat4::look_at_rh(
             point3(2.0, 2.0, 2.0),
@@ -1765,7 +1762,7 @@ impl QueueFamilyIndices {
             .map(|i| i as u32);
 
         let mut present = None;
-        for (index, properties) in properties.iter().enumerate() {
+        for (index, _properties) in properties.iter().enumerate() {
             if unsafe {
                 instance.get_physical_device_surface_support_khr(
                     physical_device,
