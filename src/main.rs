@@ -18,7 +18,7 @@ fn main() -> Result<()> {
     // trace
     // off (no logs)
     if env::var("RUST_LOG").is_err() {
-        unsafe { env::set_var("RUST_LOG", "debug") };
+        unsafe { env::set_var("RUST_LOG", "info") };
     }
 
     pretty_env_logger::init();

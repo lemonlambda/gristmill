@@ -37,7 +37,7 @@ impl Vertex {
         let pos = VertexInputAttributeDescription::builder()
             .binding(0)
             .location(0)
-            .format(Format::R32G32_SFLOAT)
+            .format(Format::R32G32B32_SFLOAT)
             .offset(0)
             .build();
 
@@ -59,14 +59,13 @@ impl Vertex {
     }
 }
 
-pub static VERTICES: [Vertex; 4] = [
-    Vertex::new(vec3(0.0, 0.5, 0.0), vec3(1.0, 0.0, 0.0), vec2(1.0, 0.0)),
-    Vertex::new(vec3(-0.5, -0.25, 0.0), vec3(0.0, 1.0, 0.0), vec2(0.0, 0.0)),
-    Vertex::new(vec3(0.5, -0.25, 0.0), vec3(0.0, 0.0, 1.0), vec2(0.0, 1.0)),
-    Vertex::new(vec3(0.0, 0.0, 5.0), vec3(1.0, 1.0, 1.0), vec2(1.0, 1.0)),
+pub static VERTICES: [Vertex; 3] = [
+    Vertex::new(vec3(0.0, 0.5, 0.0), vec3(1.0, 0.0, 0.0), vec2(0.0, 1.0)), // A
+    Vertex::new(vec3(-0.5, -0.5, 0.0), vec3(0.0, 0.0, 1.0), vec2(1.0, 1.0)), // C
+    Vertex::new(vec3(0.5, -0.5, 0.0), vec3(1.0, 1.0, 1.0), vec2(1.0, 0.0)), // D
 ];
 
-pub const INDICES: &[u16] = &[0, 1, 2, 1, 2, 3];
+pub const INDICES: &[u16] = &[0, 1, 2];
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]

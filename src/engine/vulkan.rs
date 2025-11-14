@@ -18,8 +18,8 @@ use vulkanalia::{
         AccessFlags, ApplicationInfo, AttachmentDescription, AttachmentLoadOp, AttachmentReference,
         AttachmentStoreOp, BlendFactor, BlendOp, Bool32, BorderColor, Buffer, BufferCopy,
         BufferCreateFlags, BufferCreateInfo, BufferImageCopy, BufferMemoryBarrier,
-        BufferUsageFlags, ClearColorValue, ClearValue, ColorComponentFlags, ColorSpaceKHR,
-        CommandBuffer, CommandBufferAllocateInfo, CommandBufferBeginInfo,
+        BufferUsageFlags, ClearColorValue, ClearDepthStencilValue, ClearValue, ColorComponentFlags,
+        ColorSpaceKHR, CommandBuffer, CommandBufferAllocateInfo, CommandBufferBeginInfo,
         CommandBufferInheritanceInfo, CommandBufferLevel, CommandBufferUsageFlags, CommandPool,
         CommandPoolCreateFlags, CommandPoolCreateInfo, CompareOp, ComponentMapping,
         ComponentSwizzle, CompositeAlphaFlagsKHR, CopyDescriptorSet, CullModeFlags,
@@ -31,18 +31,19 @@ use vulkanalia::{
         DescriptorSetLayoutCreateInfo, DescriptorType, DeviceCreateInfo, DeviceMemory,
         DeviceQueueCreateInfo, DeviceSize, DeviceV1_0, EXT_DEBUG_UTILS_EXTENSION, EntryV1_0,
         ErrorCode, ExtDebugUtilsExtensionInstanceCommands, ExtensionName, Extent2D, Extent3D,
-        FALSE, Fence, FenceCreateFlags, FenceCreateInfo, Filter, Format, Framebuffer,
-        FramebufferCreateInfo, FrontFace, GraphicsPipelineCreateInfo, Handle, HasBuilder, Image,
-        ImageAspectFlags, ImageCreateFlags, ImageCreateInfo, ImageLayout, ImageMemoryBarrier,
-        ImageSubresourceLayers, ImageSubresourceRange, ImageTiling, ImageType, ImageUsageFlags,
-        ImageView, ImageViewCreateInfo, ImageViewType, IndexType, InstanceCreateFlags,
-        InstanceCreateInfo, InstanceV1_0, KHR_GET_PHYSICAL_DEVICE_PROPERTIES2_EXTENSION,
-        KHR_PORTABILITY_ENUMERATION_EXTENSION, KHR_SWAPCHAIN_EXTENSION,
-        KHR_TIMELINE_SEMAPHORE_EXTENSION, KhrSurfaceExtensionInstanceCommands,
-        KhrSwapchainExtensionDeviceCommands, LogicOp, MemoryAllocateInfo, MemoryBarrier,
-        MemoryMapFlags, MemoryPropertyFlags, MemoryRequirements, Offset2D, Offset3D,
-        PhysicalDevice, PhysicalDeviceFeatures, PhysicalDeviceType, Pipeline, PipelineBindPoint,
-        PipelineCache, PipelineColorBlendAttachmentState, PipelineColorBlendStateCreateInfo,
+        FALSE, Fence, FenceCreateFlags, FenceCreateInfo, Filter, Format, FormatFeatureFlags,
+        Framebuffer, FramebufferCreateInfo, FrontFace, GraphicsPipelineCreateInfo, Handle,
+        HasBuilder, Image, ImageAspectFlags, ImageCreateFlags, ImageCreateInfo, ImageLayout,
+        ImageMemoryBarrier, ImageSubresourceLayers, ImageSubresourceRange, ImageTiling, ImageType,
+        ImageUsageFlags, ImageView, ImageViewCreateInfo, ImageViewType, IndexType,
+        InstanceCreateFlags, InstanceCreateInfo, InstanceV1_0,
+        KHR_GET_PHYSICAL_DEVICE_PROPERTIES2_EXTENSION, KHR_PORTABILITY_ENUMERATION_EXTENSION,
+        KHR_SWAPCHAIN_EXTENSION, KHR_TIMELINE_SEMAPHORE_EXTENSION,
+        KhrSurfaceExtensionInstanceCommands, KhrSwapchainExtensionDeviceCommands, LogicOp,
+        MemoryAllocateInfo, MemoryBarrier, MemoryMapFlags, MemoryPropertyFlags, MemoryRequirements,
+        Offset2D, Offset3D, PhysicalDevice, PhysicalDeviceFeatures, PhysicalDeviceType, Pipeline,
+        PipelineBindPoint, PipelineCache, PipelineColorBlendAttachmentState,
+        PipelineColorBlendStateCreateInfo, PipelineDepthStencilStateCreateInfo,
         PipelineInputAssemblyStateCreateInfo, PipelineLayout, PipelineLayoutCreateInfo,
         PipelineMultisampleStateCreateInfo, PipelineRasterizationStateCreateInfo,
         PipelineShaderStageCreateInfo, PipelineStageFlags, PipelineVertexInputStateCreateInfo,
@@ -146,6 +147,9 @@ pub struct VulkanData {
     texture_image_memory: DeviceMemory,
     texture_image_view: ImageView,
     texture_sampler: Sampler,
+    depth_image: Image,
+    depth_image_memory: DeviceMemory,
+    depth_image_view: ImageView,
 }
 
 impl VulkanApp {
@@ -163,8 +167,9 @@ impl VulkanApp {
             Self::create_render_pass(&instance, &device, &mut data)?;
             Self::create_descriptor_set_layout(&device, &mut data)?;
             Self::create_pipeline(&device, &mut data)?;
-            Self::create_framebuffers(&device, &mut data)?;
             Self::create_command_pool(&instance, &device, &mut data)?;
+            Self::create_depth_objects(&instance, &device, &mut data)?;
+            Self::create_framebuffers(&device, &mut data)?;
             Self::create_texture_image(&instance, &device, &mut data)?;
             Self::create_texture_image_view(&device, &mut data)?;
             Self::create_vertex_buffer(&instance, &device, &mut data)?;
@@ -372,12 +377,98 @@ impl VulkanApp {
         Ok(())
     }
 
+    unsafe fn create_depth_objects(
+        instance: &Instance,
+        device: &Device,
+        data: &mut VulkanData,
+    ) -> Result<()> {
+        let format = unsafe { Self::get_depth_format(instance, data) }?;
+
+        let (depth_image, depth_image_memory) = unsafe {
+            Self::create_image(
+                instance,
+                device,
+                data,
+                data.swapchain_extent.width,
+                data.swapchain_extent.height,
+                format,
+                ImageTiling::OPTIMAL,
+                ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+                MemoryPropertyFlags::DEVICE_LOCAL,
+            )
+        }?;
+
+        data.depth_image = depth_image;
+        data.depth_image_memory = depth_image_memory;
+
+        // Image View
+
+        data.depth_image_view = unsafe {
+            Self::create_image_view(device, data.depth_image, format, ImageAspectFlags::DEPTH)
+        }?;
+
+        (unsafe {
+            Self::transition_image_layout(
+                device,
+                data,
+                data.depth_image,
+                format,
+                ImageLayout::UNDEFINED,
+                ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+            )
+        })?;
+
+        Ok(())
+    }
+
+    unsafe fn get_supported_format(
+        instance: &Instance,
+        data: &VulkanData,
+        candidates: &[Format],
+        tiling: ImageTiling,
+        features: FormatFeatureFlags,
+    ) -> Result<Format> {
+        candidates
+            .iter()
+            .cloned()
+            .find(|f| {
+                let properties = unsafe {
+                    instance.get_physical_device_format_properties(data.physical_device, *f)
+                };
+
+                match tiling {
+                    ImageTiling::LINEAR => properties.linear_tiling_features.contains(features),
+                    ImageTiling::OPTIMAL => properties.optimal_tiling_features.contains(features),
+                    _ => false,
+                }
+            })
+            .ok_or_else(|| anyhow!("Failed to find supported format!"))
+    }
+
+    unsafe fn get_depth_format(instance: &Instance, data: &VulkanData) -> Result<Format> {
+        let candidates = &[
+            Format::D32_SFLOAT,
+            Format::D32_SFLOAT_S8_UINT,
+            Format::D24_UNORM_S8_UINT,
+        ];
+
+        unsafe {
+            Self::get_supported_format(
+                instance,
+                data,
+                candidates,
+                ImageTiling::OPTIMAL,
+                FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT,
+            )
+        }
+    }
+
     unsafe fn create_texture_image(
         instance: &Instance,
         device: &Device,
         data: &mut VulkanData,
     ) -> Result<()> {
-        let image = File::open("resources/texture.png")?;
+        let image = File::open("resources/tuftie.png")?;
 
         let decoder = png::Decoder::new(image);
         let mut reader = decoder.read_info()?;
@@ -892,9 +983,6 @@ impl VulkanApp {
 
         data.descriptor_set_layout = unsafe { device.create_descriptor_set_layout(&info, None) }?;
 
-        let set_layouts = &[data.descriptor_set_layout];
-        let layout_info = PipelineLayoutCreateInfo::builder().set_layouts(set_layouts);
-
         Ok(())
     }
 
@@ -978,6 +1066,15 @@ impl VulkanApp {
 
         data.pipeline_layout = unsafe { device.create_pipeline_layout(&layout_info, None) }?;
 
+        let depth_stencil_state = PipelineDepthStencilStateCreateInfo::builder()
+            .depth_test_enable(true)
+            .depth_write_enable(true)
+            .depth_compare_op(CompareOp::LESS)
+            .depth_bounds_test_enable(false)
+            .min_depth_bounds(0.0) // Optional.
+            .max_depth_bounds(1.0) // Optional.
+            .stencil_test_enable(false);
+
         let stages = &[vert_stage, frag_stage];
         let info = GraphicsPipelineCreateInfo::builder()
             .stages(stages)
@@ -986,6 +1083,7 @@ impl VulkanApp {
             .viewport_state(&viewport_state)
             .rasterization_state(&rasterization_state)
             .multisample_state(&multisample_state)
+            .depth_stencil_state(&depth_stencil_state)
             .color_blend_state(&color_blend_state)
             .layout(data.pipeline_layout)
             .render_pass(data.render_pass)
@@ -1030,19 +1128,42 @@ impl VulkanApp {
             .layout(ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
 
         let color_attachments = &[color_attachment_ref];
+
+        let depth_stencil_attachment = AttachmentDescription::builder()
+            .format(unsafe { Self::get_depth_format(instance, data) }?)
+            .samples(SampleCountFlags::_1)
+            .load_op(AttachmentLoadOp::CLEAR)
+            .store_op(AttachmentStoreOp::DONT_CARE)
+            .stencil_load_op(AttachmentLoadOp::DONT_CARE)
+            .stencil_store_op(AttachmentStoreOp::DONT_CARE)
+            .initial_layout(ImageLayout::UNDEFINED)
+            .final_layout(ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+        let depth_stencil_attachment_ref = AttachmentReference::builder()
+            .attachment(1)
+            .layout(ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+
         let subpass = SubpassDescription::builder()
             .pipeline_bind_point(PipelineBindPoint::GRAPHICS)
-            .color_attachments(color_attachments);
+            .color_attachments(color_attachments)
+            .depth_stencil_attachment(&depth_stencil_attachment_ref);
 
         let dependency = SubpassDependency::builder()
             .src_subpass(SUBPASS_EXTERNAL)
             .dst_subpass(0)
-            .src_stage_mask(PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+            .src_stage_mask(
+                PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT
+                    | PipelineStageFlags::EARLY_FRAGMENT_TESTS,
+            )
             .src_access_mask(AccessFlags::empty())
-            .dst_stage_mask(PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
-            .dst_access_mask(AccessFlags::COLOR_ATTACHMENT_WRITE);
+            .dst_stage_mask(
+                PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT
+                    | PipelineStageFlags::EARLY_FRAGMENT_TESTS,
+            )
+            .dst_access_mask(
+                AccessFlags::COLOR_ATTACHMENT_WRITE | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
+            );
 
-        let attachments = &[color_attachment];
+        let attachments = &[color_attachment, depth_stencil_attachment];
         let subpasses = &[subpass];
         let dependencies = &[dependency];
         let info = RenderPassCreateInfo::builder()
@@ -1060,7 +1181,7 @@ impl VulkanApp {
             .swapchain_image_views
             .iter()
             .map(|i| {
-                let attachments = &[*i];
+                let attachments = &[*i, data.depth_image_view];
                 let create_info = FramebufferCreateInfo::builder()
                     .render_pass(data.render_pass)
                     .attachments(attachments)
@@ -1118,7 +1239,14 @@ impl VulkanApp {
                 },
             };
 
-            let clear_values = &[color_clear_value];
+            let depth_clear_value = ClearValue {
+                depth_stencil: ClearDepthStencilValue {
+                    depth: 1.0,
+                    stencil: 0,
+                },
+            };
+
+            let clear_values = &[color_clear_value, depth_clear_value];
             let info = RenderPassBeginInfo::builder()
                 .render_pass(data.render_pass)
                 .framebuffer(data.framebuffers[i])
@@ -1189,6 +1317,7 @@ impl VulkanApp {
             Self::create_swapchain_image_views(&self.device, &mut self.data)?;
             Self::create_render_pass(&self.instance, &self.device, &mut self.data)?;
             Self::create_pipeline(&self.device, &mut self.data)?;
+            Self::create_depth_objects(&self.instance, &self.device, &mut self.data)?;
             Self::create_framebuffers(&self.device, &mut self.data)?;
             Self::create_uniform_buffers(&self.instance, &self.device, &mut self.data)?;
             Self::create_descriptor_pool(&self.device, &mut self.data)?;
@@ -1379,6 +1508,13 @@ impl VulkanApp {
     ) -> Result<()> {
         let (src_access_mask, dst_access_mask, src_stage_mask, dst_stage_mask) =
             match (old_layout, new_layout) {
+                (ImageLayout::UNDEFINED, ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL) => (
+                    AccessFlags::empty(),
+                    AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
+                        | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
+                    PipelineStageFlags::TOP_OF_PIPE,
+                    PipelineStageFlags::EARLY_FRAGMENT_TESTS,
+                ),
                 (ImageLayout::UNDEFINED, ImageLayout::TRANSFER_DST_OPTIMAL) => (
                     AccessFlags::empty(),
                     AccessFlags::TRANSFER_WRITE,
@@ -1396,8 +1532,19 @@ impl VulkanApp {
 
         let command_buffer = unsafe { Self::begin_single_time_commands(device, data) }?;
 
+        let aspect_mask = if new_layout == ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL {
+            match format {
+                Format::D32_SFLOAT_S8_UINT | Format::D24_UNORM_S8_UINT => {
+                    ImageAspectFlags::DEPTH | ImageAspectFlags::STENCIL
+                }
+                _ => ImageAspectFlags::DEPTH,
+            }
+        } else {
+            ImageAspectFlags::COLOR
+        };
+
         let subresource = ImageSubresourceRange::builder()
-            .aspect_mask(ImageAspectFlags::COLOR)
+            .aspect_mask(aspect_mask)
             .base_mip_level(0)
             .level_count(1)
             .base_array_layer(0)
@@ -1448,8 +1595,14 @@ impl VulkanApp {
     }
 
     unsafe fn create_texture_image_view(device: &Device, data: &mut VulkanData) -> Result<()> {
-        data.texture_image_view =
-            unsafe { Self::create_image_view(device, data.texture_image, Format::R8G8B8A8_SRGB) }?;
+        data.texture_image_view = unsafe {
+            Self::create_image_view(
+                device,
+                data.texture_image,
+                Format::R8G8B8A8_SRGB,
+                ImageAspectFlags::COLOR,
+            )
+        }?;
 
         Ok(())
     }
@@ -1458,7 +1611,9 @@ impl VulkanApp {
         data.swapchain_image_views = data
             .swapchain_images
             .iter()
-            .map(|i| unsafe { Self::create_image_view(device, *i, data.swapchain_format) })
+            .map(|i| unsafe {
+                Self::create_image_view(device, *i, data.swapchain_format, ImageAspectFlags::COLOR)
+            })
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(())
@@ -1468,9 +1623,10 @@ impl VulkanApp {
         device: &Device,
         image: Image,
         format: Format,
+        aspects: ImageAspectFlags,
     ) -> Result<ImageView> {
         let subresource_range = ImageSubresourceRange::builder()
-            .aspect_mask(ImageAspectFlags::COLOR)
+            .aspect_mask(aspects)
             .base_mip_level(0)
             .level_count(1)
             .base_array_layer(0)
@@ -1488,6 +1644,10 @@ impl VulkanApp {
     unsafe fn destroy_swapchain(&mut self) {
         debug!("Destroying Swapchain");
         unsafe {
+            self.device
+                .destroy_image_view(self.data.depth_image_view, None);
+            self.device.free_memory(self.data.depth_image_memory, None);
+            self.device.destroy_image(self.data.depth_image, None);
             self.device
                 .destroy_descriptor_pool(self.data.descriptor_pool, None);
             self.device
