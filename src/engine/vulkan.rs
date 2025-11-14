@@ -48,11 +48,11 @@ use vulkanalia::{
         PipelineMultisampleStateCreateInfo, PipelineRasterizationStateCreateInfo,
         PipelineShaderStageCreateInfo, PipelineStageFlags, PipelineVertexInputStateCreateInfo,
         PipelineViewportStateCreateInfo, PolygonMode, PresentInfoKHR, PresentModeKHR,
-        PrimitiveTopology, QUEUE_FAMILY_IGNORED, Queue, QueueFlags, Rect2D, RenderPass,
-        RenderPassBeginInfo, RenderPassCreateInfo, SUBPASS_EXTERNAL, SampleCountFlags, Sampler,
-        SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode, Semaphore, SemaphoreCreateInfo,
-        ShaderModule, ShaderModuleCreateInfo, ShaderStageFlags, SharingMode, SubmitInfo,
-        SubpassContents, SubpassDependency, SubpassDescription, SuccessCode,
+        PrimitiveTopology, PushConstantRange, QUEUE_FAMILY_IGNORED, Queue, QueueFlags, Rect2D,
+        RenderPass, RenderPassBeginInfo, RenderPassCreateInfo, SUBPASS_EXTERNAL, SampleCountFlags,
+        Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode, Semaphore,
+        SemaphoreCreateInfo, ShaderModule, ShaderModuleCreateInfo, ShaderStageFlags, SharingMode,
+        SubmitInfo, SubpassContents, SubpassDependency, SubpassDescription, SuccessCode,
         SurfaceCapabilitiesKHR, SurfaceFormatKHR, SurfaceKHR, SwapchainCreateInfoKHR, SwapchainKHR,
         TRUE, Viewport, WriteDescriptorSet, make_version,
     },
@@ -274,24 +274,25 @@ impl VulkanApp {
     unsafe fn update_uniform_buffer(&self, image_index: usize) -> Result<()> {
         let time = self.start.elapsed().as_secs_f32();
 
-        let model = Mat4::from_axis_angle(vec3(0.0, 0.0, 1.0), Deg(90.0) * time);
-
         let view = Mat4::look_at_rh(
             point3(2.0, 2.0, 2.0),
             point3(0.0, 0.0, 0.0),
             vec3(0.0, 0.0, 1.0),
         );
 
-        let mut proj = cgmath::perspective(
-            Deg(45.0),
-            self.data.swapchain_extent.width as f32 / self.data.swapchain_extent.height as f32,
-            0.1,
-            10.0,
+        let correction = Mat4::new(
+            1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.5, 1.0,
         );
 
-        proj[1][1] *= -1.0;
+        let proj = correction
+            * cgmath::perspective(
+                Deg(45.0),
+                self.data.swapchain_extent.width as f32 / self.data.swapchain_extent.height as f32,
+                0.1,
+                10.0,
+            );
 
-        let ubo = UniformBufferObject { model, view, proj };
+        let ubo = UniformBufferObject { view, proj };
 
         let memory = unsafe {
             self.device.map_memory(
@@ -1061,8 +1062,16 @@ impl VulkanApp {
             .attachments(attachments)
             .blend_constants([0.0, 0.0, 0.0, 0.0]);
 
+        let vert_push_constant_range = PushConstantRange::builder()
+            .stage_flags(ShaderStageFlags::VERTEX)
+            .offset(0)
+            .size(64);
+
         let set_layouts = &[data.descriptor_set_layout];
-        let layout_info = PipelineLayoutCreateInfo::builder().set_layouts(set_layouts);
+        let push_constant_ranges = &[vert_push_constant_range];
+        let layout_info = PipelineLayoutCreateInfo::builder()
+            .set_layouts(set_layouts)
+            .push_constant_ranges(push_constant_ranges);
 
         data.pipeline_layout = unsafe { device.create_pipeline_layout(&layout_info, None) }?;
 
@@ -1220,6 +1229,12 @@ impl VulkanApp {
 
         data.command_buffers = unsafe { device.allocate_command_buffers(&allocate_info) }?;
 
+        let model = Mat4::from_axis_angle(vec3(0.0, 0.0, 1.0), Deg(0.0));
+
+        let model_bytes: &[u8] = unsafe {
+            std::slice::from_raw_parts(&model as *const Mat4 as *const u8, size_of::<Mat4>())
+        };
+
         for (i, command_buffer) in data.command_buffers.iter().enumerate() {
             let inheritance = CommandBufferInheritanceInfo::builder();
 
@@ -1274,6 +1289,13 @@ impl VulkanApp {
                     0,
                     &[data.descriptor_sets[i]],
                     &[],
+                );
+                device.cmd_push_constants(
+                    *command_buffer,
+                    data.pipeline_layout,
+                    ShaderStageFlags::VERTEX,
+                    0,
+                    model_bytes,
                 );
                 device.cmd_draw_indexed(*command_buffer, INDICES.len() as u32, 1, 0, 0, 0);
 
