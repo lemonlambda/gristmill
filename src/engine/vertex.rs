@@ -59,17 +59,23 @@ impl Vertex {
     }
 }
 
-pub static VERTICES: [Vertex; 3] = [
-    Vertex::new(vec3(0.0, 0.5, 0.0), vec3(1.0, 0.0, 0.0), vec2(0.0, 1.0)), // A
-    Vertex::new(vec3(-0.5, -0.5, 0.0), vec3(0.0, 0.0, 1.0), vec2(0.0, 1.0)), // C
-    Vertex::new(vec3(0.5, -0.5, 0.0), vec3(1.0, 1.0, 1.0), vec2(1.0, 1.0)), // D
+pub static VERTICES: [Vertex; 4] = [
+    Vertex::new(vec3(-0.5, -0.5, 0.0), vec3(1.0, 0.0, 0.0), vec2(1.0, 0.0)),
+    Vertex::new(vec3(0.5, -0.5, 0.0), vec3(0.0, 1.0, 0.0), vec2(0.0, 0.0)),
+    Vertex::new(vec3(0.5, 0.5, 0.0), vec3(0.0, 0.0, 1.0), vec2(0.0, 1.0)),
+    Vertex::new(vec3(-0.5, 0.5, 0.0), vec3(1.0, 1.0, 1.0), vec2(1.0, 1.0)),
 ];
-
-pub const INDICES: &[u16] = &[0, 1, 2];
+pub const INDICES: &[u16] = &[0, 1, 2, 2, 3, 0];
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
 pub struct UniformBufferObject {
     pub view: Mat4,
     pub proj: Mat4,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct SporadicBufferObject {
+    pub num_instances: i32,
 }

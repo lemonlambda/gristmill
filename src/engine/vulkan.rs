@@ -15,11 +15,12 @@ use vulkanalia::{
     loader::{LIBRARY, LibloadingLoader},
     vk::{
         AccessFlags, ApplicationInfo, AttachmentDescription, AttachmentLoadOp, AttachmentReference,
-        AttachmentStoreOp, BlendFactor, BlendOp, Bool32, BorderColor, Buffer, BufferCopy, BufferCreateInfo, BufferImageCopy, BufferMemoryBarrier,
-        BufferUsageFlags, ClearColorValue, ClearDepthStencilValue, ClearValue, ColorComponentFlags,
-        ColorSpaceKHR, CommandBuffer, CommandBufferAllocateInfo, CommandBufferBeginInfo,
-        CommandBufferInheritanceInfo, CommandBufferLevel, CommandBufferUsageFlags, CommandPool,
-        CommandPoolCreateFlags, CommandPoolCreateInfo, CompareOp, CompositeAlphaFlagsKHR, CopyDescriptorSet, CullModeFlags,
+        AttachmentStoreOp, BlendFactor, BlendOp, Bool32, BorderColor, Buffer, BufferCopy,
+        BufferCreateInfo, BufferImageCopy, BufferMemoryBarrier, BufferUsageFlags, ClearColorValue,
+        ClearDepthStencilValue, ClearValue, ColorComponentFlags, ColorSpaceKHR, CommandBuffer,
+        CommandBufferAllocateInfo, CommandBufferBeginInfo, CommandBufferInheritanceInfo,
+        CommandBufferLevel, CommandBufferUsageFlags, CommandPool, CommandPoolCreateFlags,
+        CommandPoolCreateInfo, CompareOp, CompositeAlphaFlagsKHR, CopyDescriptorSet, CullModeFlags,
         DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
         DebugUtilsMessengerCallbackDataEXT, DebugUtilsMessengerCreateInfoEXT,
         DebugUtilsMessengerEXT, DependencyFlags, DescriptorBufferInfo, DescriptorImageInfo,
@@ -30,34 +31,36 @@ use vulkanalia::{
         ErrorCode, ExtDebugUtilsExtensionInstanceCommands, ExtensionName, Extent2D, Extent3D,
         FALSE, Fence, FenceCreateFlags, FenceCreateInfo, Filter, Format, FormatFeatureFlags,
         Framebuffer, FramebufferCreateInfo, FrontFace, GraphicsPipelineCreateInfo, Handle,
-        HasBuilder, Image, ImageAspectFlags, ImageCreateInfo, ImageLayout,
-        ImageMemoryBarrier, ImageSubresourceLayers, ImageSubresourceRange, ImageTiling, ImageType,
-        ImageUsageFlags, ImageView, ImageViewCreateInfo, ImageViewType, IndexType,
-        InstanceCreateFlags, InstanceCreateInfo, InstanceV1_0,
-        KHR_GET_PHYSICAL_DEVICE_PROPERTIES2_EXTENSION, KHR_PORTABILITY_ENUMERATION_EXTENSION,
-        KHR_SWAPCHAIN_EXTENSION, KHR_TIMELINE_SEMAPHORE_EXTENSION,
-        KhrSurfaceExtensionInstanceCommands, KhrSwapchainExtensionDeviceCommands, LogicOp,
-        MemoryAllocateInfo, MemoryBarrier, MemoryMapFlags, MemoryPropertyFlags, MemoryRequirements,
-        Offset2D, Offset3D, PhysicalDevice, PhysicalDeviceFeatures, PhysicalDeviceType, Pipeline,
-        PipelineBindPoint, PipelineCache, PipelineColorBlendAttachmentState,
-        PipelineColorBlendStateCreateInfo, PipelineDepthStencilStateCreateInfo,
-        PipelineInputAssemblyStateCreateInfo, PipelineLayout, PipelineLayoutCreateInfo,
-        PipelineMultisampleStateCreateInfo, PipelineRasterizationStateCreateInfo,
-        PipelineShaderStageCreateInfo, PipelineStageFlags, PipelineVertexInputStateCreateInfo,
-        PipelineViewportStateCreateInfo, PolygonMode, PresentInfoKHR, PresentModeKHR,
-        PrimitiveTopology, PushConstantRange, QUEUE_FAMILY_IGNORED, Queue, QueueFlags, Rect2D,
-        RenderPass, RenderPassBeginInfo, RenderPassCreateInfo, SUBPASS_EXTERNAL, SampleCountFlags,
-        Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode, Semaphore,
-        SemaphoreCreateInfo, ShaderModule, ShaderModuleCreateInfo, ShaderStageFlags, SharingMode,
-        SubmitInfo, SubpassContents, SubpassDependency, SubpassDescription, SuccessCode,
-        SurfaceCapabilitiesKHR, SurfaceFormatKHR, SurfaceKHR, SwapchainCreateInfoKHR, SwapchainKHR,
-        TRUE, Viewport, WriteDescriptorSet, make_version,
+        HasBuilder, Image, ImageAspectFlags, ImageCreateInfo, ImageLayout, ImageMemoryBarrier,
+        ImageSubresourceLayers, ImageSubresourceRange, ImageTiling, ImageType, ImageUsageFlags,
+        ImageView, ImageViewCreateInfo, ImageViewType, IndexType, InstanceCreateFlags,
+        InstanceCreateInfo, InstanceV1_0, KHR_GET_PHYSICAL_DEVICE_PROPERTIES2_EXTENSION,
+        KHR_PORTABILITY_ENUMERATION_EXTENSION, KHR_SWAPCHAIN_EXTENSION,
+        KHR_TIMELINE_SEMAPHORE_EXTENSION, KhrSurfaceExtensionInstanceCommands,
+        KhrSwapchainExtensionDeviceCommands, LogicOp, MemoryAllocateInfo, MemoryBarrier,
+        MemoryMapFlags, MemoryPropertyFlags, MemoryRequirements, Offset2D, Offset3D,
+        PhysicalDevice, PhysicalDeviceFeatures, PhysicalDeviceType, Pipeline, PipelineBindPoint,
+        PipelineCache, PipelineColorBlendAttachmentState, PipelineColorBlendStateCreateInfo,
+        PipelineDepthStencilStateCreateInfo, PipelineInputAssemblyStateCreateInfo, PipelineLayout,
+        PipelineLayoutCreateInfo, PipelineMultisampleStateCreateInfo,
+        PipelineRasterizationStateCreateInfo, PipelineShaderStageCreateInfo, PipelineStageFlags,
+        PipelineVertexInputStateCreateInfo, PipelineViewportStateCreateInfo, PolygonMode,
+        PresentInfoKHR, PresentModeKHR, PrimitiveTopology, PushConstantRange, QUEUE_FAMILY_IGNORED,
+        Queue, QueueFlags, Rect2D, RenderPass, RenderPassBeginInfo, RenderPassCreateInfo,
+        SUBPASS_EXTERNAL, SampleCountFlags, Sampler, SamplerAddressMode, SamplerCreateInfo,
+        SamplerMipmapMode, Semaphore, SemaphoreCreateInfo, ShaderModule, ShaderModuleCreateInfo,
+        ShaderStageFlags, SharingMode, SubmitInfo, SubpassContents, SubpassDependency,
+        SubpassDescription, SuccessCode, SurfaceCapabilitiesKHR, SurfaceFormatKHR, SurfaceKHR,
+        SwapchainCreateInfoKHR, SwapchainKHR, TRUE, Viewport, WriteDescriptorSet,
+        WriteDescriptorSetBuilder, make_version,
     },
     window::{create_surface, get_required_instance_extensions},
 };
 use winit::window::Window;
 
-use crate::engine::vertex::{INDICES, Mat4, UniformBufferObject, VERTICES, Vertex};
+use crate::engine::vertex::{
+    INDICES, Mat4, SporadicBufferObject, UniformBufferObject, VERTICES, Vertex,
+};
 
 const PORTABILITY_MACOS_VERSION: Version = Version::new(1, 3, 216);
 
@@ -137,6 +140,8 @@ pub struct VulkanData {
     index_buffer_memory: DeviceMemory,
     uniform_buffers: Vec<Buffer>,
     uniform_buffers_memory: Vec<DeviceMemory>,
+    sporadic_buffers: Vec<Buffer>,
+    sporadic_buffers_memory: Vec<DeviceMemory>,
     descriptor_pool: DescriptorPool,
     descriptor_sets: Vec<DescriptorSet>,
     swapchain_min_image_count: u32,
@@ -300,12 +305,28 @@ impl VulkanApp {
             )
         }?;
 
-        unsafe { copy_nonoverlapping(&ubo, memory.cast(), 1) };
-
         unsafe {
+            copy_nonoverlapping(&ubo, memory.cast(), 1);
             self.device
                 .unmap_memory(self.data.uniform_buffers_memory[image_index])
         };
+
+        let sbo = SporadicBufferObject { num_instances: 32 };
+
+        let memory = unsafe {
+            self.device.map_memory(
+                self.data.sporadic_buffers_memory[image_index],
+                0,
+                size_of::<SporadicBufferObject>() as u64,
+                MemoryMapFlags::empty(),
+            )
+        }?;
+
+        unsafe {
+            copy_nonoverlapping(&sbo, memory.cast(), 1);
+            self.device
+                .unmap_memory(self.data.sporadic_buffers_memory[image_index])
+        }
 
         Ok(())
     }
@@ -315,11 +336,15 @@ impl VulkanApp {
             .type_(DescriptorType::UNIFORM_BUFFER)
             .descriptor_count(data.swapchain_images.len() as u32);
 
+        let sbo_size = DescriptorPoolSize::builder()
+            .type_(DescriptorType::UNIFORM_BUFFER)
+            .descriptor_count(data.swapchain_images.len() as u32);
+
         let sampler_size = DescriptorPoolSize::builder()
             .type_(DescriptorType::COMBINED_IMAGE_SAMPLER)
             .descriptor_count(data.swapchain_images.len() as u32);
 
-        let pool_sizes = &[ubo_size, sampler_size];
+        let pool_sizes = &[ubo_size, sbo_size, sampler_size];
         let info = DescriptorPoolCreateInfo::builder()
             .pool_sizes(pool_sizes)
             .max_sets(data.swapchain_images.len() as u32);
@@ -327,6 +352,28 @@ impl VulkanApp {
         data.descriptor_pool = unsafe { device.create_descriptor_pool(&info, None) }?;
 
         Ok(())
+    }
+
+    unsafe fn create_buffer_descriptor_set<'a, UBO>(
+        i: usize,
+        binding: u32,
+        descriptor_set: DescriptorSet,
+        buffer: Buffer,
+    ) -> WriteDescriptorSetBuilder<'a> {
+        let info = DescriptorBufferInfo::builder()
+            .buffer(buffer)
+            .offset(0)
+            .range(size_of::<UBO>() as u64);
+
+        let buffer_info = Box::new([info]);
+        let buffer_info: &'a mut _ = Box::leak(buffer_info);
+
+        WriteDescriptorSet::builder()
+            .dst_set(descriptor_set)
+            .dst_binding(binding)
+            .dst_array_element(0)
+            .descriptor_type(DescriptorType::UNIFORM_BUFFER)
+            .buffer_info(buffer_info)
     }
 
     unsafe fn create_descriptor_sets(device: &Device, data: &mut VulkanData) -> Result<()> {
@@ -338,18 +385,22 @@ impl VulkanApp {
         data.descriptor_sets = unsafe { device.allocate_descriptor_sets(&info) }?;
 
         for i in 0..data.swapchain_images.len() {
-            let info = DescriptorBufferInfo::builder()
-                .buffer(data.uniform_buffers[i])
-                .offset(0)
-                .range(size_of::<UniformBufferObject>() as u64);
-
-            let buffer_info = &[info];
-            let ubo_write = WriteDescriptorSet::builder()
-                .dst_set(data.descriptor_sets[i])
-                .dst_binding(0)
-                .dst_array_element(0)
-                .descriptor_type(DescriptorType::UNIFORM_BUFFER)
-                .buffer_info(buffer_info);
+            let ubo_write = unsafe {
+                Self::create_buffer_descriptor_set::<UniformBufferObject>(
+                    i,
+                    0,
+                    data.descriptor_sets[i],
+                    data.uniform_buffers[i],
+                )
+            };
+            let sbo_write = unsafe {
+                Self::create_buffer_descriptor_set::<SporadicBufferObject>(
+                    i,
+                    1,
+                    data.descriptor_sets[i],
+                    data.sporadic_buffers[i],
+                )
+            };
 
             let info = DescriptorImageInfo::builder()
                 .image_layout(ImageLayout::SHADER_READ_ONLY_OPTIMAL)
@@ -359,14 +410,14 @@ impl VulkanApp {
             let image_info = &[info];
             let sampler_write = WriteDescriptorSet::builder()
                 .dst_set(data.descriptor_sets[i])
-                .dst_binding(1)
+                .dst_binding(2)
                 .dst_array_element(0)
                 .descriptor_type(DescriptorType::COMBINED_IMAGE_SAMPLER)
                 .image_info(image_info);
 
             unsafe {
                 device.update_descriptor_sets(
-                    &[ubo_write, sampler_write],
+                    &[ubo_write, sbo_write, sampler_write],
                     &[] as &[CopyDescriptorSet],
                 )
             };
@@ -970,13 +1021,19 @@ impl VulkanApp {
             .descriptor_count(1)
             .stage_flags(ShaderStageFlags::VERTEX);
 
-        let sampler_binding = DescriptorSetLayoutBinding::builder()
+        let sbo_binding = DescriptorSetLayoutBinding::builder()
             .binding(1)
+            .descriptor_type(DescriptorType::UNIFORM_BUFFER)
+            .descriptor_count(1)
+            .stage_flags(ShaderStageFlags::VERTEX);
+
+        let sampler_binding = DescriptorSetLayoutBinding::builder()
+            .binding(2)
             .descriptor_type(DescriptorType::COMBINED_IMAGE_SAMPLER)
             .descriptor_count(1)
             .stage_flags(ShaderStageFlags::FRAGMENT);
 
-        let bindings = &[ubo_binding, sampler_binding];
+        let bindings = &[ubo_binding, sbo_binding, sampler_binding];
         let info = DescriptorSetLayoutCreateInfo::builder().bindings(bindings);
 
         data.descriptor_set_layout = unsafe { device.create_descriptor_set_layout(&info, None) }?;
@@ -1369,8 +1426,22 @@ impl VulkanApp {
                 )
             }?;
 
+            let (sporadic_buffer, sporadic_buffer_memory) = unsafe {
+                Self::create_buffer(
+                    instance,
+                    device,
+                    data,
+                    size_of::<SporadicBufferObject>() as u64,
+                    BufferUsageFlags::UNIFORM_BUFFER,
+                    MemoryPropertyFlags::HOST_COHERENT | MemoryPropertyFlags::HOST_VISIBLE,
+                )
+            }?;
+
             data.uniform_buffers.push(uniform_buffer);
             data.uniform_buffers_memory.push(uniform_buffer_memory);
+
+            data.sporadic_buffers.push(sporadic_buffer);
+            data.sporadic_buffers_memory.push(sporadic_buffer_memory);
         }
 
         Ok(())
@@ -1695,6 +1766,14 @@ impl VulkanApp {
                 .for_each(|b| self.device.destroy_buffer(*b, None));
             self.data
                 .uniform_buffers_memory
+                .iter()
+                .for_each(|m| self.device.free_memory(*m, None));
+            self.data
+                .sporadic_buffers
+                .iter()
+                .for_each(|b| self.device.destroy_buffer(*b, None));
+            self.data
+                .sporadic_buffers_memory
                 .iter()
                 .for_each(|m| self.device.free_memory(*m, None));
             self.device.device_wait_idle().unwrap();
