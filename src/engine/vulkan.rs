@@ -13,56 +13,21 @@ use vulkanalia::{
     Device, Entry, Instance, Version,
     bytecode::Bytecode,
     loader::{LIBRARY, LibloadingLoader},
-    vk::{
-        AccessFlags, ApplicationInfo, AttachmentDescription, AttachmentLoadOp, AttachmentReference,
-        AttachmentStoreOp, BlendFactor, BlendOp, Bool32, BorderColor, Buffer, BufferCopy,
-        BufferCreateInfo, BufferImageCopy, BufferMemoryBarrier, BufferUsageFlags, ClearColorValue,
-        ClearDepthStencilValue, ClearValue, ColorComponentFlags, ColorSpaceKHR, CommandBuffer,
-        CommandBufferAllocateInfo, CommandBufferBeginInfo, CommandBufferInheritanceInfo,
-        CommandBufferLevel, CommandBufferUsageFlags, CommandPool, CommandPoolCreateFlags,
-        CommandPoolCreateInfo, CompareOp, CompositeAlphaFlagsKHR, CopyDescriptorSet, CullModeFlags,
-        DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
-        DebugUtilsMessengerCallbackDataEXT, DebugUtilsMessengerCreateInfoEXT,
-        DebugUtilsMessengerEXT, DependencyFlags, DescriptorBufferInfo, DescriptorImageInfo,
-        DescriptorPool, DescriptorPoolCreateInfo, DescriptorPoolSize, DescriptorSet,
-        DescriptorSetAllocateInfo, DescriptorSetLayout, DescriptorSetLayoutBinding,
-        DescriptorSetLayoutCreateInfo, DescriptorType, DeviceCreateInfo, DeviceMemory,
-        DeviceQueueCreateInfo, DeviceSize, DeviceV1_0, EXT_DEBUG_UTILS_EXTENSION, EntryV1_0,
-        ErrorCode, ExtDebugUtilsExtensionInstanceCommands, ExtensionName, Extent2D, Extent3D,
-        FALSE, Fence, FenceCreateFlags, FenceCreateInfo, Filter, Format, FormatFeatureFlags,
-        Framebuffer, FramebufferCreateInfo, FrontFace, GraphicsPipelineCreateInfo, Handle,
-        HasBuilder, Image, ImageAspectFlags, ImageCreateInfo, ImageLayout, ImageMemoryBarrier,
-        ImageSubresourceLayers, ImageSubresourceRange, ImageTiling, ImageType, ImageUsageFlags,
-        ImageView, ImageViewCreateInfo, ImageViewType, IndexType, InstanceCreateFlags,
-        InstanceCreateInfo, InstanceV1_0, KHR_GET_PHYSICAL_DEVICE_PROPERTIES2_EXTENSION,
-        KHR_PORTABILITY_ENUMERATION_EXTENSION, KHR_SWAPCHAIN_EXTENSION,
-        KHR_TIMELINE_SEMAPHORE_EXTENSION, KhrSurfaceExtensionInstanceCommands,
-        KhrSwapchainExtensionDeviceCommands, LogicOp, MemoryAllocateInfo, MemoryBarrier,
-        MemoryMapFlags, MemoryPropertyFlags, MemoryRequirements, Offset2D, Offset3D,
-        PhysicalDevice, PhysicalDeviceFeatures, PhysicalDeviceType, Pipeline, PipelineBindPoint,
-        PipelineCache, PipelineColorBlendAttachmentState, PipelineColorBlendStateCreateInfo,
-        PipelineDepthStencilStateCreateInfo, PipelineInputAssemblyStateCreateInfo, PipelineLayout,
-        PipelineLayoutCreateInfo, PipelineMultisampleStateCreateInfo,
-        PipelineRasterizationStateCreateInfo, PipelineShaderStageCreateInfo, PipelineStageFlags,
-        PipelineVertexInputStateCreateInfo, PipelineViewportStateCreateInfo, PolygonMode,
-        PresentInfoKHR, PresentModeKHR, PrimitiveTopology, PushConstantRange, QUEUE_FAMILY_IGNORED,
-        Queue, QueueFlags, Rect2D, RenderPass, RenderPassBeginInfo, RenderPassCreateInfo,
-        SUBPASS_EXTERNAL, SampleCountFlags, Sampler, SamplerAddressMode, SamplerCreateInfo,
-        SamplerMipmapMode, Semaphore, SemaphoreCreateInfo, ShaderModule, ShaderModuleCreateInfo,
-        ShaderStageFlags, SharingMode, SubmitInfo, SubpassContents, SubpassDependency,
-        SubpassDescription, SuccessCode, SurfaceCapabilitiesKHR, SurfaceFormatKHR, SurfaceKHR,
-        SwapchainCreateInfoKHR, SwapchainKHR, TRUE, Viewport, WriteDescriptorSet,
-        WriteDescriptorSetBuilder, make_version,
-    },
+    vk::*,
     window::{create_surface, get_required_instance_extensions},
 };
 use winit::window::Window;
 
-use crate::engine::vertex::{
-    INDICES, Mat4, SporadicBufferObject, UniformBufferObject, VERTICES, Vertex,
+use crate::engine::{
+    vertex::{INDICES, Mat4, SporadicBufferObject, UniformBufferObject, VERTICES, Vertex},
+    vulkan::{
+        buffer_manager::{BufferManager, StandardBufferMaps, UniformBufferMaps},
+        shared_helpers::get_memory_type_index,
+    },
 };
 
-mod buffer_manager;
+pub mod buffer_manager;
+pub mod shared_helpers;
 
 const PORTABILITY_MACOS_VERSION: Version = Version::new(1, 3, 216);
 
@@ -140,10 +105,6 @@ pub struct VulkanData {
     vertex_buffer_memory: DeviceMemory,
     index_buffer: Buffer,
     index_buffer_memory: DeviceMemory,
-    uniform_buffers: Vec<Buffer>,
-    uniform_buffers_memory: Vec<DeviceMemory>,
-    sporadic_buffers: Vec<Buffer>,
-    sporadic_buffers_memory: Vec<DeviceMemory>,
     descriptor_pool: DescriptorPool,
     descriptor_sets: Vec<DescriptorSet>,
     swapchain_min_image_count: u32,
@@ -154,6 +115,7 @@ pub struct VulkanData {
     depth_image: Image,
     depth_image_memory: DeviceMemory,
     depth_image_view: ImageView,
+    buffer_manager: BufferManager<StandardBufferMaps, UniformBufferMaps>,
 }
 
 impl VulkanApp {
@@ -166,24 +128,6 @@ impl VulkanApp {
             data.surface = create_surface(&instance, &window, &window)?;
             Self::pick_physical_device(&instance, &mut data)?;
             let device = Self::create_logical_device(&entry, &instance, &mut data)?;
-            Self::create_swapchain(window, &instance, &device, &mut data)?;
-            Self::create_swapchain_image_views(&device, &mut data)?;
-            Self::create_render_pass(&instance, &device, &mut data)?;
-            Self::create_descriptor_set_layout(&device, &mut data)?;
-            Self::create_pipeline(&device, &mut data)?;
-            Self::create_command_pool(&instance, &device, &mut data)?;
-            Self::create_depth_objects(&instance, &device, &mut data)?;
-            Self::create_framebuffers(&device, &mut data)?;
-            Self::create_texture_image(&instance, &device, &mut data)?;
-            Self::create_texture_image_view(&device, &mut data)?;
-            Self::create_vertex_buffer(&instance, &device, &mut data)?;
-            Self::create_texture_sampler(&device, &mut data)?;
-            Self::create_index_buffer(&instance, &device, &mut data)?;
-            Self::create_uniform_buffers(&instance, &device, &mut data)?;
-            Self::create_descriptor_pool(&device, &mut data)?;
-            Self::create_descriptor_sets(&device, &mut data)?;
-            Self::create_command_buffers(&device, &mut data)?;
-            Self::create_sync_objects(&device, &mut data)?;
             info!("Woo created everything, hard work ain't it?");
             Ok(Self {
                 entry,
@@ -195,6 +139,37 @@ impl VulkanApp {
                 start: Instant::now(),
             })
         }
+    }
+
+    pub unsafe fn setup_vulkan(&mut self, window: &Window) -> Result<()> {
+        let instance = self.instance.clone();
+        let device = self.device.clone();
+        unsafe {
+            self.data.buffer_manager = BufferManager::<StandardBufferMaps, UniformBufferMaps>::new(
+                self.instance.clone(),
+                self.device.clone(),
+                self.data.physical_device,
+            );
+            Self::create_swapchain(window, &instance, &device, &mut self.data)?;
+            Self::create_swapchain_image_views(&device, &mut self.data)?;
+            Self::create_render_pass(&instance, &device, &mut self.data)?;
+            Self::create_descriptor_set_layout(&mut self.data)?;
+            Self::create_pipeline(&device, &mut self.data)?;
+            Self::create_command_pool(&instance, &device, &mut self.data)?;
+            Self::create_depth_objects(&instance, &device, &mut self.data)?;
+            Self::create_framebuffers(&device, &mut self.data)?;
+            Self::create_texture_image(&instance, &device, &mut self.data)?;
+            Self::create_texture_image_view(&device, &mut self.data)?;
+            Self::create_vertex_buffer(&instance, &device, &mut self.data)?;
+            Self::create_texture_sampler(&device, &mut self.data)?;
+            Self::create_index_buffer(&instance, &device, &mut self.data)?;
+            Self::create_uniform_buffers(&mut self.data)?;
+            Self::create_descriptor_pool(&mut self.data)?;
+            Self::create_descriptor_sets(&device, &mut self.data)?;
+            Self::create_command_buffers(&device, &mut self.data)?;
+            Self::create_sync_objects(&device, &mut self.data)?;
+        }
+        Ok(())
     }
 
     pub unsafe fn render(&mut self, window: &Window) -> Result<()> {
@@ -298,9 +273,14 @@ impl VulkanApp {
 
         let ubo = UniformBufferObject { view, proj };
 
+        let buffer_pair = self
+            .data
+            .buffer_manager
+            .get_uniform_buffers(UniformBufferMaps::ModelViewProject)[image_index];
+
         let memory = unsafe {
             self.device.map_memory(
-                self.data.uniform_buffers_memory[image_index],
+                buffer_pair.memory,
                 0,
                 size_of::<UniformBufferObject>() as u64,
                 MemoryMapFlags::empty(),
@@ -309,15 +289,19 @@ impl VulkanApp {
 
         unsafe {
             copy_nonoverlapping(&ubo, memory.cast(), 1);
-            self.device
-                .unmap_memory(self.data.uniform_buffers_memory[image_index])
+            self.device.unmap_memory(buffer_pair.memory)
         };
 
         let sbo = SporadicBufferObject { num_instances: 32 };
 
+        let buffer_pair = self
+            .data
+            .buffer_manager
+            .get_uniform_buffers(UniformBufferMaps::SporadicBufferObject)[image_index];
+
         let memory = unsafe {
             self.device.map_memory(
-                self.data.sporadic_buffers_memory[image_index],
+                buffer_pair.memory,
                 0,
                 size_of::<SporadicBufferObject>() as u64,
                 MemoryMapFlags::empty(),
@@ -326,56 +310,25 @@ impl VulkanApp {
 
         unsafe {
             copy_nonoverlapping(&sbo, memory.cast(), 1);
-            self.device
-                .unmap_memory(self.data.sporadic_buffers_memory[image_index])
+            self.device.unmap_memory(buffer_pair.memory)
         }
 
         Ok(())
     }
 
-    unsafe fn create_descriptor_pool(device: &Device, data: &mut VulkanData) -> Result<()> {
-        let ubo_size = DescriptorPoolSize::builder()
-            .type_(DescriptorType::UNIFORM_BUFFER)
-            .descriptor_count(data.swapchain_images.len() as u32);
-
-        let sbo_size = DescriptorPoolSize::builder()
-            .type_(DescriptorType::UNIFORM_BUFFER)
-            .descriptor_count(data.swapchain_images.len() as u32);
-
+    unsafe fn create_descriptor_pool(data: &mut VulkanData) -> Result<()> {
         let sampler_size = DescriptorPoolSize::builder()
             .type_(DescriptorType::COMBINED_IMAGE_SAMPLER)
             .descriptor_count(data.swapchain_images.len() as u32);
 
-        let pool_sizes = &[ubo_size, sbo_size, sampler_size];
-        let info = DescriptorPoolCreateInfo::builder()
-            .pool_sizes(pool_sizes)
-            .max_sets(data.swapchain_images.len() as u32);
-
-        data.descriptor_pool = unsafe { device.create_descriptor_pool(&info, None) }?;
+        data.descriptor_pool = unsafe {
+            data.buffer_manager.create_descriptor_pool(
+                data.swapchain_images.len() as u32,
+                Some(vec![sampler_size]),
+            )?
+        };
 
         Ok(())
-    }
-
-    unsafe fn create_buffer_descriptor_set<'a, UBO>(
-        i: usize,
-        binding: u32,
-        descriptor_set: DescriptorSet,
-        buffer: Buffer,
-    ) -> WriteDescriptorSetBuilder<'a> {
-        let info = DescriptorBufferInfo::builder()
-            .buffer(buffer)
-            .offset(0)
-            .range(size_of::<UBO>() as u64);
-
-        let buffer_info = Box::new([info]);
-        let buffer_info: &'a mut _ = Box::leak(buffer_info);
-
-        WriteDescriptorSet::builder()
-            .dst_set(descriptor_set)
-            .dst_binding(binding)
-            .dst_array_element(0)
-            .descriptor_type(DescriptorType::UNIFORM_BUFFER)
-            .buffer_info(buffer_info)
     }
 
     unsafe fn create_descriptor_sets(device: &Device, data: &mut VulkanData) -> Result<()> {
@@ -386,24 +339,24 @@ impl VulkanApp {
 
         data.descriptor_sets = unsafe { device.allocate_descriptor_sets(&info) }?;
 
-        for i in 0..data.swapchain_images.len() {
-            let ubo_write = unsafe {
-                Self::create_buffer_descriptor_set::<UniformBufferObject>(
-                    i,
+        let ubo_descriptors = unsafe {
+            data.buffer_manager
+                .create_buffer_descriptor_set::<UniformBufferObject>(
                     0,
-                    data.descriptor_sets[i],
-                    data.uniform_buffers[i],
+                    UniformBufferMaps::ModelViewProject,
+                    &data.descriptor_sets,
                 )
-            };
-            let sbo_write = unsafe {
-                Self::create_buffer_descriptor_set::<SporadicBufferObject>(
-                    i,
+        };
+        let sbo_descriptors = unsafe {
+            data.buffer_manager
+                .create_buffer_descriptor_set::<SporadicBufferObject>(
                     1,
-                    data.descriptor_sets[i],
-                    data.sporadic_buffers[i],
+                    UniformBufferMaps::SporadicBufferObject,
+                    &data.descriptor_sets,
                 )
-            };
+        };
 
+        for i in 0..data.swapchain_images.len() {
             let info = DescriptorImageInfo::builder()
                 .image_layout(ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                 .image_view(data.texture_image_view)
@@ -419,7 +372,7 @@ impl VulkanApp {
 
             unsafe {
                 device.update_descriptor_sets(
-                    &[ubo_write, sbo_write, sampler_write],
+                    &[ubo_descriptors[i], sbo_descriptors[i], sampler_write],
                     &[] as &[CopyDescriptorSet],
                 )
             };
@@ -681,7 +634,7 @@ impl VulkanApp {
         let info = MemoryAllocateInfo::builder()
             .allocation_size(requirements.size)
             .memory_type_index(unsafe {
-                Self::get_memory_type_index(instance, data, properties, requirements)
+                get_memory_type_index(instance, data.physical_device, properties, requirements)
             }?);
 
         let image_memory = unsafe { device.allocate_memory(&info, None) }?;
@@ -1016,29 +969,21 @@ impl VulkanApp {
         Ok(())
     }
 
-    unsafe fn create_descriptor_set_layout(device: &Device, data: &mut VulkanData) -> Result<()> {
-        let ubo_binding = DescriptorSetLayoutBinding::builder()
-            .binding(0)
-            .descriptor_type(DescriptorType::UNIFORM_BUFFER)
-            .descriptor_count(1)
-            .stage_flags(ShaderStageFlags::VERTEX);
+    unsafe fn create_descriptor_set_layout(data: &mut VulkanData) -> Result<()> {
+        data.buffer_manager
+            .setup_uniform_buffer(UniformBufferMaps::ModelViewProject);
+        data.buffer_manager
+            .setup_uniform_buffer(UniformBufferMaps::SporadicBufferObject);
 
-        let sbo_binding = DescriptorSetLayoutBinding::builder()
-            .binding(1)
-            .descriptor_type(DescriptorType::UNIFORM_BUFFER)
-            .descriptor_count(1)
-            .stage_flags(ShaderStageFlags::VERTEX);
-
-        let sampler_binding = DescriptorSetLayoutBinding::builder()
-            .binding(2)
-            .descriptor_type(DescriptorType::COMBINED_IMAGE_SAMPLER)
-            .descriptor_count(1)
-            .stage_flags(ShaderStageFlags::FRAGMENT);
-
-        let bindings = &[ubo_binding, sbo_binding, sampler_binding];
-        let info = DescriptorSetLayoutCreateInfo::builder().bindings(bindings);
-
-        data.descriptor_set_layout = unsafe { device.create_descriptor_set_layout(&info, None) }?;
+        data.descriptor_set_layout = unsafe {
+            data.buffer_manager.create_descriptor_set_layout(Some(vec![
+                DescriptorSetLayoutBinding::builder()
+                    .binding(2)
+                    .descriptor_type(DescriptorType::COMBINED_IMAGE_SAMPLER)
+                    .descriptor_count(1)
+                    .stage_flags(ShaderStageFlags::FRAGMENT),
+            ]))?
+        };
 
         Ok(())
     }
@@ -1397,8 +1342,8 @@ impl VulkanApp {
             Self::create_pipeline(&self.device, &mut self.data)?;
             Self::create_depth_objects(&self.instance, &self.device, &mut self.data)?;
             Self::create_framebuffers(&self.device, &mut self.data)?;
-            Self::create_uniform_buffers(&self.instance, &self.device, &mut self.data)?;
-            Self::create_descriptor_pool(&self.device, &mut self.data)?;
+            Self::create_uniform_buffers(&mut self.data)?;
+            Self::create_descriptor_pool(&mut self.data)?;
             Self::create_descriptor_sets(&self.device, &mut self.data)?;
             Self::create_command_buffers(&self.device, &mut self.data)?;
         }
@@ -1408,42 +1353,29 @@ impl VulkanApp {
         Ok(())
     }
 
-    unsafe fn create_uniform_buffers(
-        instance: &Instance,
-        device: &Device,
-        data: &mut VulkanData,
-    ) -> Result<()> {
-        data.uniform_buffers.clear();
-        data.uniform_buffers_memory.clear();
+    unsafe fn create_uniform_buffers(data: &mut VulkanData) -> Result<()> {
+        unsafe {
+            data.buffer_manager
+                .free_uniform_buffers(UniformBufferMaps::ModelViewProject);
+            data.buffer_manager
+                .free_uniform_buffers(UniformBufferMaps::SporadicBufferObject);
+        }
 
         for _ in 0..data.swapchain_images.len() {
-            let (uniform_buffer, uniform_buffer_memory) = unsafe {
-                Self::create_buffer(
-                    instance,
-                    device,
-                    data,
-                    size_of::<UniformBufferObject>() as u64,
-                    BufferUsageFlags::UNIFORM_BUFFER,
-                    MemoryPropertyFlags::HOST_COHERENT | MemoryPropertyFlags::HOST_VISIBLE,
-                )
-            }?;
-
-            let (sporadic_buffer, sporadic_buffer_memory) = unsafe {
-                Self::create_buffer(
-                    instance,
-                    device,
-                    data,
-                    size_of::<SporadicBufferObject>() as u64,
-                    BufferUsageFlags::UNIFORM_BUFFER,
-                    MemoryPropertyFlags::HOST_COHERENT | MemoryPropertyFlags::HOST_VISIBLE,
-                )
-            }?;
-
-            data.uniform_buffers.push(uniform_buffer);
-            data.uniform_buffers_memory.push(uniform_buffer_memory);
-
-            data.sporadic_buffers.push(sporadic_buffer);
-            data.sporadic_buffers_memory.push(sporadic_buffer_memory);
+            unsafe {
+                data.buffer_manager
+                    .allocate_new_uniform_buffer::<UniformBufferObject>(
+                        UniformBufferMaps::ModelViewProject,
+                        BufferUsageFlags::UNIFORM_BUFFER,
+                        MemoryPropertyFlags::HOST_COHERENT | MemoryPropertyFlags::HOST_VISIBLE,
+                    )?;
+                data.buffer_manager
+                    .allocate_new_uniform_buffer::<SporadicBufferObject>(
+                        UniformBufferMaps::SporadicBufferObject,
+                        BufferUsageFlags::UNIFORM_BUFFER,
+                        MemoryPropertyFlags::HOST_COHERENT | MemoryPropertyFlags::HOST_VISIBLE,
+                    )?;
+            };
         }
 
         Ok(())
@@ -1469,7 +1401,7 @@ impl VulkanApp {
         let memory_info = MemoryAllocateInfo::builder()
             .allocation_size(requirements.size)
             .memory_type_index(unsafe {
-                Self::get_memory_type_index(instance, data, properties, requirements)
+                get_memory_type_index(instance, data.physical_device, properties, requirements)
             }?);
 
         let buffer_memory = unsafe { device.allocate_memory(&memory_info, None) }?;
@@ -1669,23 +1601,6 @@ impl VulkanApp {
         Ok(())
     }
 
-    unsafe fn get_memory_type_index(
-        instance: &Instance,
-        data: &VulkanData,
-        properties: MemoryPropertyFlags,
-        requirements: MemoryRequirements,
-    ) -> Result<u32> {
-        let memory =
-            unsafe { instance.get_physical_device_memory_properties(data.physical_device) };
-        (0..memory.memory_type_count)
-            .find(|i| {
-                let suitable = (requirements.memory_type_bits & (1 << i)) != 0;
-                let memory_type = memory.memory_types[*i as usize];
-                suitable && memory_type.property_flags.contains(properties)
-            })
-            .ok_or_else(|| anyhow!("Failed to find suitable memory type."))
-    }
-
     unsafe fn create_texture_image_view(device: &Device, data: &mut VulkanData) -> Result<()> {
         data.texture_image_view = unsafe {
             Self::create_image_view(
@@ -1763,21 +1678,11 @@ impl VulkanApp {
     pub unsafe fn destroy(&mut self) {
         unsafe {
             self.data
-                .uniform_buffers
-                .iter()
-                .for_each(|b| self.device.destroy_buffer(*b, None));
+                .buffer_manager
+                .free_uniform_buffers(UniformBufferMaps::ModelViewProject);
             self.data
-                .uniform_buffers_memory
-                .iter()
-                .for_each(|m| self.device.free_memory(*m, None));
-            self.data
-                .sporadic_buffers
-                .iter()
-                .for_each(|b| self.device.destroy_buffer(*b, None));
-            self.data
-                .sporadic_buffers_memory
-                .iter()
-                .for_each(|m| self.device.free_memory(*m, None));
+                .buffer_manager
+                .free_uniform_buffers(UniformBufferMaps::SporadicBufferObject);
             self.device.device_wait_idle().unwrap();
 
             self.destroy_swapchain();

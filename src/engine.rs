@@ -24,7 +24,8 @@ impl Engine {
             .with_inner_size(LogicalSize::new(1024, 768))
             .build(&event_loop)?;
         info!("Creating vulkan app");
-        let vulkan_app = unsafe { VulkanApp::create(&window)? };
+        let mut vulkan_app = unsafe { VulkanApp::create(&window)? };
+        unsafe { vulkan_app.setup_vulkan(&window)? };
 
         Ok(Self {
             event_loop,
