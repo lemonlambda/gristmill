@@ -1,4 +1,4 @@
-#![feature(never_type)]
+#![feature(never_type, trait_alias)]
 
 extern crate pretty_env_logger;
 

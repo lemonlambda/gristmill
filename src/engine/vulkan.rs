@@ -62,6 +62,8 @@ use crate::engine::vertex::{
     INDICES, Mat4, SporadicBufferObject, UniformBufferObject, VERTICES, Vertex,
 };
 
+mod buffer_manager;
+
 const PORTABILITY_MACOS_VERSION: Version = Version::new(1, 3, 216);
 
 const VALIDATION_ENABLED: bool = cfg!(debug_assertions);
