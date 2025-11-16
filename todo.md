@@ -1,2 +1,6 @@
 - [ ] Name objects using VK_EXT_debug_utils
-- [ ] Make instancing work
+    -[ ] Preferably make it automatically somewhat do this using buffer manager system
+- [x] Make instancing work
+- [ ] Convert indices buffer to buffer manager
+- [ ] 
+- [ ] 
