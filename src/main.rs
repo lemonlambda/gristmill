@@ -3,25 +3,15 @@
 extern crate pretty_env_logger;
 
 use crate::engine::Engine;
+use crate::logging::setup_logging;
 use anyhow::Result;
-use std::env;
 
 mod engine;
 mod init;
+mod logging;
 
 fn main() -> Result<()> {
-    // There is multiple logging levels in highest priority to lowest
-    // error
-    // warn
-    // info
-    // debug
-    // trace
-    // off (no logs)
-    if env::var("RUST_LOG").is_err() {
-        unsafe { env::set_var("RUST_LOG", "info") };
-    }
-
-    pretty_env_logger::init();
+    setup_logging();
 
     let engine = Engine::new()?;
 
