@@ -1,0 +1,3 @@
+- Iron from blood
+- Acid mixing in machines to create certain things
+- Extracting more of something create bad effects for entire monster
