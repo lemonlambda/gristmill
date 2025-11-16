@@ -34,8 +34,7 @@ void main() {
     fragColor = vec3(1.0, float(1.0 + gl_InstanceIndex) / float(sporadic.num_instances), 0.0);
 
     vec4 vertex = vec4(inPosition.xyz + vec3(xdelta, ydelta, 0), 1.0);
-    // gl_Position = ubo.proj * ubo.view * pcs.model * vertex;
-    gl_Position = vec4(inPosition, 1.0);
+    gl_Position = ubo.proj * ubo.view * pcs.model * vertex;
     fragTexCoord = inTexCoord;
 }
 

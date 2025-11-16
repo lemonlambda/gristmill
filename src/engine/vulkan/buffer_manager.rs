@@ -151,16 +151,16 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
 
         match data {
             BufferManagerDataType::Data(value) => {
-                let destination = unsafe {
-                    self.device().map_memory(
+                unsafe {
+                    let destination = self.device().map_memory(
                         buffer_pair.memory,
                         0,
                         size_of::<T>() as u64,
                         MemoryMapFlags::empty(),
-                    )
-                }?;
+                    )?;
 
-                unsafe { copy_nonoverlapping(value.as_ptr(), destination.cast(), value.len()) };
+                    copy_nonoverlapping(value.as_ptr(), destination.cast(), value.len());
+                };
             }
             BufferManagerDataType::TempBuffer {
                 size,

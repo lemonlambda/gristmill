@@ -704,10 +704,10 @@ impl VulkanApp {
         if VALIDATION_ENABLED {
             extensions.push(EXT_DEBUG_UTILS_EXTENSION.name.as_ptr());
         }
+        extensions.push(KHR_GET_PHYSICAL_DEVICE_PROPERTIES2_EXTENSION.name.as_ptr());
 
         let flags = if cfg!(target_os = "macos") && entry.version()? >= PORTABILITY_MACOS_VERSION {
             info!("Enabling extensions for macOS portability");
-            extensions.push(KHR_GET_PHYSICAL_DEVICE_PROPERTIES2_EXTENSION.name.as_ptr());
             extensions.push(KHR_PORTABILITY_ENUMERATION_EXTENSION.name.as_ptr());
             InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR
         } else {
@@ -1250,25 +1250,14 @@ impl VulkanApp {
                     PipelineBindPoint::GRAPHICS,
                     data.pipeline,
                 );
-                let vertex_buffer_pair = data
-                    .buffer_manager
-                    .get_standard_buffer(StandardBufferMaps::Vertices);
-
-                let mem = device.map_memory(
-                    vertex_buffer_pair.memory,
-                    0,
-                    (size_of::<Vertex>() * VERTICES.len()) as u64,
-                    MemoryMapFlags::empty(),
-                )?;
-
-                info!("{:?}", *(mem as *mut [Vertex; 4]));
-
                 device.unmap_memory(vertex_buffer_pair.memory);
-
                 device.cmd_bind_vertex_buffers(
                     *command_buffer,
                     0,
-                    &[vertex_buffer_pair.buffer],
+                    &[data
+                        .buffer_manager
+                        .get_standard_buffer(StandardBufferMaps::Vertices)
+                        .buffer],
                     &[0],
                 );
                 device.cmd_bind_index_buffer(
@@ -1428,7 +1417,7 @@ impl VulkanApp {
             data.buffer_manager
                 .copy_data_to_buffer::<[Vertex; VERTICES.len()]>(
                     BufferManagerDataType::TempBuffer {
-                        size: VERTICES.len() as u64,
+                        size: (size_of::<Vertex>() * VERTICES.len()) as u64,
                         graphics_queue: data.graphics_queue,
                         command_pool: data.command_pool,
                     },
