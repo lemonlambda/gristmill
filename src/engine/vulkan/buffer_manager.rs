@@ -1,14 +1,15 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::ptr::copy_nonoverlapping;
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use log::*;
 use std::hash::Hash;
 use vulkanalia::vk::*;
 use vulkanalia::{Device, Instance};
 
-use crate::engine::vulkan::VulkanData;
-use crate::engine::vulkan::shared_helpers::get_memory_type_index;
+use crate::engine::vertex::Vertex;
+use crate::engine::vulkan::shared_helpers::{copy_buffer, get_memory_type_index};
 
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum StandardBufferMaps {
@@ -27,13 +28,51 @@ pub enum UniformBufferMaps {
 
 pub trait BufferManagerRequirements = Default + Eq + Hash + Debug;
 
-// Buffer Manager needs the following features
-//
-// [x] Buffer Creation
-// [x] Descriptor Sets
-// [x] Descriptor Pool
-// [ ] Bindings
-// [ ] Easy copy to function
+pub enum BufferManagerCopyType<S, U> {
+    TempBuffer,
+    StandardBuffer(S),
+    UniformBuffers(U, usize),
+}
+
+pub enum BufferManagerDataType<'a, T, S, U> {
+    Data(&'a [T]),
+    TempBuffer {
+        size: u64,
+        graphics_queue: Queue,
+        command_pool: CommandPool,
+    },
+    StandardBuffer {
+        size: u64,
+        name: S,
+        graphics_queue: Queue,
+        command_pool: CommandPool,
+    },
+    UniformBuffers {
+        size: u64,
+        name: U,
+        index: usize,
+        graphics_queue: Queue,
+        command_pool: CommandPool,
+    },
+}
+
+impl<'a, T, S, U> PartialEq<BufferManagerCopyType<S, U>> for BufferManagerDataType<'a, T, S, U> {
+    fn eq(&self, other: &BufferManagerCopyType<S, U>) -> bool {
+        matches!(
+            (self, other),
+            (
+                &BufferManagerDataType::TempBuffer { .. },
+                &BufferManagerCopyType::TempBuffer
+            ) | (
+                &BufferManagerDataType::StandardBuffer { .. },
+                &BufferManagerCopyType::StandardBuffer(_),
+            ) | (
+                &BufferManagerDataType::UniformBuffers { .. },
+                &BufferManagerCopyType::UniformBuffers(_, _),
+            )
+        )
+    }
+}
 
 #[derive(Clone, Default, Debug)]
 pub struct BufferManager<S: BufferManagerRequirements, U: BufferManagerRequirements> {
@@ -54,19 +93,6 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
         self_
     }
 
-    pub fn add_instance(&mut self, instance: Instance) -> &mut Self {
-        self.instance = Some(instance);
-        self
-    }
-    pub fn add_device(&mut self, device: Device) -> &mut Self {
-        self.device = Some(device);
-        self
-    }
-    pub fn add_physical_device(&mut self, physical_device: PhysicalDevice) -> &mut Self {
-        self.physical_device = physical_device;
-        self
-    }
-
     /// Internal function to skip writing out unwrap
     fn instance(&self) -> Instance {
         self.instance.clone().unwrap()
@@ -76,7 +102,7 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
         self.device.clone().unwrap()
     }
 
-    pub unsafe fn create_descriptor_pool<'a>(
+    pub unsafe fn create_descriptor_pool(
         &mut self,
         length: u32,
         additional_sizes: Option<Vec<DescriptorPoolSizeBuilder>>,
@@ -98,8 +124,118 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
         Ok(unsafe { self.device().create_descriptor_pool(&info, None) }?)
     }
 
+    pub unsafe fn copy_data_to_buffer<'a, T>(
+        &mut self,
+        data: BufferManagerDataType<'a, T, S, U>,
+        buffer_type: BufferManagerCopyType<S, U>,
+    ) -> Result<()> {
+        if data == buffer_type {
+            return Err(anyhow!("`data` and `buffer_type` are the same."));
+        }
+
+        let buffer_pair = match buffer_type {
+            BufferManagerCopyType::TempBuffer => self
+                .temp_buffer
+                .ok_or(anyhow!("Temp buffer not allocated."))?,
+            BufferManagerCopyType::StandardBuffer(ref name) => *self
+                .buffers
+                .get(name)
+                .ok_or(anyhow!("{name:?} buffer not allocated."))?,
+            BufferManagerCopyType::UniformBuffers(ref name, i) => *self
+                .uniform_buffers
+                .get(name)
+                .ok_or(anyhow!("{name:?} buffer not allocated."))?
+                .get(i)
+                .ok_or(anyhow!("{i} index doesn't exist in {name:?}."))?,
+        };
+
+        match data {
+            BufferManagerDataType::Data(value) => {
+                let destination = unsafe {
+                    self.device().map_memory(
+                        buffer_pair.memory,
+                        0,
+                        size_of::<T>() as u64,
+                        MemoryMapFlags::empty(),
+                    )
+                }?;
+
+                unsafe { copy_nonoverlapping(value.as_ptr(), destination.cast(), value.len()) };
+            }
+            BufferManagerDataType::TempBuffer {
+                size,
+                graphics_queue,
+                command_pool,
+            } => unsafe {
+                let source = self
+                    .temp_buffer
+                    .ok_or(anyhow!("Temp buffer not allocated."))?;
+
+                self.device().unmap_memory(source.memory);
+
+                copy_buffer(
+                    &self.device(),
+                    graphics_queue,
+                    command_pool,
+                    source.buffer,
+                    buffer_pair.buffer,
+                    size,
+                )?;
+            },
+            BufferManagerDataType::StandardBuffer {
+                size,
+                ref name,
+                graphics_queue,
+                command_pool,
+            } => unsafe {
+                let source = self
+                    .buffers
+                    .get(name)
+                    .ok_or(anyhow!("{name:?} is not allocated."))?;
+
+                self.device().unmap_memory(source.memory);
+
+                copy_buffer(
+                    &self.device(),
+                    graphics_queue,
+                    command_pool,
+                    source.buffer,
+                    buffer_pair.buffer,
+                    size,
+                )?;
+            },
+            BufferManagerDataType::UniformBuffers {
+                size,
+                ref name,
+                index,
+                graphics_queue,
+                command_pool,
+            } => unsafe {
+                let source = self
+                    .uniform_buffers
+                    .get(name)
+                    .ok_or(anyhow!("{name:?} is not allocated."))?
+                    .get(index)
+                    .ok_or(anyhow!("{index} doesn't exist in {name:?}."))?;
+
+                self.device().unmap_memory(source.memory);
+
+                copy_buffer(
+                    &self.device(),
+                    graphics_queue,
+                    command_pool,
+                    source.buffer,
+                    buffer_pair.buffer,
+                    size,
+                )?;
+            },
+        };
+
+        Ok(())
+    }
+
     /// Frees the previous temp buffer if it exists
-    pub unsafe fn create_temp_buffer<B>(
+    pub unsafe fn allocate_temp_buffer<B>(
         &mut self,
         usage: BufferUsageFlags,
         properties: MemoryPropertyFlags,
@@ -189,6 +325,10 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
         Ok(())
     }
 
+    pub fn get_standard_buffer(&mut self, name: S) -> &BufferPair {
+        self.buffers.get(&name).unwrap()
+    }
+
     pub fn setup_uniform_buffer(&mut self, name: U) {
         self.uniform_buffers.entry(name).or_insert(vec![]);
     }
@@ -222,7 +362,6 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
         let mut bindings = additional_descriptors.unwrap_or(vec![]);
 
         for (i, _) in self.uniform_buffers.iter().enumerate() {
-            info!("{i}");
             bindings.push(
                 DescriptorSetLayoutBinding::builder()
                     .binding(i as u32)
@@ -234,6 +373,14 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
 
         let info = DescriptorSetLayoutCreateInfo::builder().bindings(&bindings);
         unsafe { Ok(self.device().create_descriptor_set_layout(&info, None)?) }
+    }
+
+    pub unsafe fn free_standard_buffer(&mut self, name: S) {
+        let device = self.device();
+
+        self.buffers
+            .entry(name)
+            .and_modify(|b| unsafe { b.free(&device) });
     }
 
     pub unsafe fn free_uniform_buffers(&mut self, name: U) {

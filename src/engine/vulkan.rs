@@ -21,8 +21,14 @@ use winit::window::Window;
 use crate::engine::{
     vertex::{INDICES, Mat4, SporadicBufferObject, UniformBufferObject, VERTICES, Vertex},
     vulkan::{
-        buffer_manager::{BufferManager, StandardBufferMaps, UniformBufferMaps},
-        shared_helpers::get_memory_type_index,
+        buffer_manager::{
+            BufferManager, BufferManagerCopyType, BufferManagerDataType, StandardBufferMaps,
+            UniformBufferMaps,
+        },
+        shared_helpers::{
+            begin_single_time_commands, copy_buffer, end_single_time_commands,
+            get_memory_type_index,
+        },
     },
 };
 
@@ -101,8 +107,6 @@ pub struct VulkanData {
     render_finished_semaphore: Vec<Semaphore>,
     in_flight_fences: Vec<Fence>,
     images_in_flight: Vec<Fence>,
-    vertex_buffer: Buffer,
-    vertex_buffer_memory: DeviceMemory,
     index_buffer: Buffer,
     index_buffer_memory: DeviceMemory,
     descriptor_pool: DescriptorPool,
@@ -128,7 +132,6 @@ impl VulkanApp {
             data.surface = create_surface(&instance, &window, &window)?;
             Self::pick_physical_device(&instance, &mut data)?;
             let device = Self::create_logical_device(&entry, &instance, &mut data)?;
-            info!("Woo created everything, hard work ain't it?");
             Ok(Self {
                 entry,
                 instance,
@@ -160,7 +163,7 @@ impl VulkanApp {
             Self::create_framebuffers(&device, &mut self.data)?;
             Self::create_texture_image(&instance, &device, &mut self.data)?;
             Self::create_texture_image_view(&device, &mut self.data)?;
-            Self::create_vertex_buffer(&instance, &device, &mut self.data)?;
+            Self::create_vertex_buffer(&mut self.data)?;
             Self::create_texture_sampler(&device, &mut self.data)?;
             Self::create_index_buffer(&instance, &device, &mut self.data)?;
             Self::create_uniform_buffers(&mut self.data)?;
@@ -168,6 +171,7 @@ impl VulkanApp {
             Self::create_descriptor_sets(&device, &mut self.data)?;
             Self::create_command_buffers(&device, &mut self.data)?;
             Self::create_sync_objects(&device, &mut self.data)?;
+            info!("Woo created everything, hard work ain't it?");
         }
         Ok(())
     }
@@ -559,43 +563,6 @@ impl VulkanApp {
         Ok(())
     }
 
-    unsafe fn begin_single_time_commands(
-        device: &Device,
-        data: &VulkanData,
-    ) -> Result<CommandBuffer> {
-        let info = CommandBufferAllocateInfo::builder()
-            .level(CommandBufferLevel::PRIMARY)
-            .command_pool(data.command_pool)
-            .command_buffer_count(1);
-
-        let command_buffer = unsafe { device.allocate_command_buffers(&info) }?[0];
-
-        let info =
-            CommandBufferBeginInfo::builder().flags(CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-
-        (unsafe { device.begin_command_buffer(command_buffer, &info) })?;
-
-        Ok(command_buffer)
-    }
-
-    unsafe fn end_single_time_commands(
-        device: &Device,
-        data: &VulkanData,
-        command_buffer: CommandBuffer,
-    ) -> Result<()> {
-        (unsafe { device.end_command_buffer(command_buffer) })?;
-
-        let command_buffers = &[command_buffer];
-        let info = SubmitInfo::builder().command_buffers(command_buffers);
-
-        (unsafe { device.queue_submit(data.graphics_queue, &[info], Fence::null()) })?;
-        (unsafe { device.queue_wait_idle(data.graphics_queue) })?;
-
-        unsafe { device.free_command_buffers(data.command_pool, &[command_buffer]) };
-
-        Ok(())
-    }
-
     unsafe fn create_image(
         instance: &Instance,
         device: &Device,
@@ -675,7 +642,7 @@ impl VulkanApp {
         width: u32,
         height: u32,
     ) -> Result<()> {
-        let command_buffer = unsafe { Self::begin_single_time_commands(device, data) }?;
+        let command_buffer = unsafe { begin_single_time_commands(device, data.command_pool) }?;
 
         let subresource = ImageSubresourceLayers::builder()
             .aspect_mask(ImageAspectFlags::COLOR)
@@ -705,7 +672,14 @@ impl VulkanApp {
             )
         };
 
-        (unsafe { Self::end_single_time_commands(device, data, command_buffer) })?;
+        (unsafe {
+            end_single_time_commands(
+                device,
+                data.graphics_queue,
+                data.command_pool,
+                command_buffer,
+            )
+        })?;
 
         Ok(())
     }
@@ -1276,7 +1250,27 @@ impl VulkanApp {
                     PipelineBindPoint::GRAPHICS,
                     data.pipeline,
                 );
-                device.cmd_bind_vertex_buffers(*command_buffer, 0, &[data.vertex_buffer], &[0]);
+                let vertex_buffer_pair = data
+                    .buffer_manager
+                    .get_standard_buffer(StandardBufferMaps::Vertices);
+
+                let mem = device.map_memory(
+                    vertex_buffer_pair.memory,
+                    0,
+                    (size_of::<Vertex>() * VERTICES.len()) as u64,
+                    MemoryMapFlags::empty(),
+                )?;
+
+                info!("{:?}", *(mem as *mut [Vertex; 4]));
+
+                device.unmap_memory(vertex_buffer_pair.memory);
+
+                device.cmd_bind_vertex_buffers(
+                    *command_buffer,
+                    0,
+                    &[vertex_buffer_pair.buffer],
+                    &[0],
+                );
                 device.cmd_bind_index_buffer(
                     *command_buffer,
                     data.index_buffer,
@@ -1411,49 +1405,38 @@ impl VulkanApp {
         Ok((buffer, buffer_memory))
     }
 
-    unsafe fn create_vertex_buffer(
-        instance: &Instance,
-        device: &Device,
-        data: &mut VulkanData,
-    ) -> Result<()> {
-        let size = (size_of::<Vertex>() * VERTICES.len()) as u64;
+    unsafe fn create_vertex_buffer(data: &mut VulkanData) -> Result<()> {
+        unsafe {
+            data.buffer_manager
+                .allocate_temp_buffer::<[Vertex; VERTICES.len()]>(
+                    BufferUsageFlags::TRANSFER_SRC,
+                    MemoryPropertyFlags::HOST_COHERENT | MemoryPropertyFlags::HOST_VISIBLE,
+                )?;
 
-        let (staging_buffer, staging_buffer_memory) = unsafe {
-            Self::create_buffer(
-                instance,
-                device,
-                data,
-                size,
-                BufferUsageFlags::TRANSFER_SRC,
-                MemoryPropertyFlags::HOST_COHERENT | MemoryPropertyFlags::HOST_VISIBLE,
-            )
-        }?;
+            data.buffer_manager.copy_data_to_buffer(
+                BufferManagerDataType::Data(&VERTICES),
+                BufferManagerCopyType::TempBuffer,
+            )?;
 
-        let memory =
-            unsafe { device.map_memory(staging_buffer_memory, 0, size, MemoryMapFlags::empty()) }?;
+            data.buffer_manager
+                .allocate_new_standard_buffer::<[Vertex; VERTICES.len()]>(
+                    StandardBufferMaps::Vertices,
+                    BufferUsageFlags::VERTEX_BUFFER | BufferUsageFlags::TRANSFER_DST,
+                    MemoryPropertyFlags::DEVICE_LOCAL | MemoryPropertyFlags::HOST_VISIBLE,
+                )?;
 
-        unsafe { copy_nonoverlapping(VERTICES.as_ptr(), memory.cast(), VERTICES.len()) };
+            data.buffer_manager
+                .copy_data_to_buffer::<[Vertex; VERTICES.len()]>(
+                    BufferManagerDataType::TempBuffer {
+                        size: VERTICES.len() as u64,
+                        graphics_queue: data.graphics_queue,
+                        command_pool: data.command_pool,
+                    },
+                    BufferManagerCopyType::StandardBuffer(StandardBufferMaps::Vertices),
+                )?;
 
-        unsafe { device.unmap_memory(staging_buffer_memory) };
-
-        let (vertex_buffer, vertex_buffer_memory) = unsafe {
-            Self::create_buffer(
-                instance,
-                device,
-                data,
-                size,
-                BufferUsageFlags::VERTEX_BUFFER | BufferUsageFlags::TRANSFER_DST,
-                MemoryPropertyFlags::DEVICE_LOCAL,
-            )
-        }?;
-
-        data.vertex_buffer = vertex_buffer;
-        data.vertex_buffer_memory = vertex_buffer_memory;
-
-        (unsafe { Self::copy_buffer(device, data, staging_buffer, vertex_buffer, size) })?;
-
-        unsafe { device.destroy_buffer(staging_buffer, None) };
-        unsafe { device.free_memory(staging_buffer_memory, None) };
+            data.buffer_manager.free_temp_buffer()
+        };
 
         Ok(())
     }
@@ -1497,27 +1480,19 @@ impl VulkanApp {
         data.index_buffer = index_buffer;
         data.index_buffer_memory = index_buffer_memory;
 
-        (unsafe { Self::copy_buffer(device, data, staging_buffer, index_buffer, size) })?;
+        (unsafe {
+            copy_buffer(
+                device,
+                data.graphics_queue,
+                data.command_pool,
+                staging_buffer,
+                index_buffer,
+                size,
+            )
+        })?;
 
         unsafe { device.destroy_buffer(staging_buffer, None) };
         unsafe { device.free_memory(staging_buffer_memory, None) };
-
-        Ok(())
-    }
-
-    unsafe fn copy_buffer(
-        device: &Device,
-        data: &VulkanData,
-        source: Buffer,
-        destination: Buffer,
-        size: DeviceSize,
-    ) -> Result<()> {
-        let command_buffer = unsafe { Self::begin_single_time_commands(device, data) }?;
-
-        let regions = BufferCopy::builder().size(size);
-        unsafe { device.cmd_copy_buffer(command_buffer, source, destination, &[regions]) };
-
-        (unsafe { Self::end_single_time_commands(device, data, command_buffer) })?;
 
         Ok(())
     }
@@ -1554,7 +1529,7 @@ impl VulkanApp {
                 _ => return Err(anyhow!("Unsupported image layout transition!")),
             };
 
-        let command_buffer = unsafe { Self::begin_single_time_commands(device, data) }?;
+        let command_buffer = unsafe { begin_single_time_commands(device, data.command_pool) }?;
 
         let aspect_mask = if new_layout == ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL {
             match format {
@@ -1596,7 +1571,14 @@ impl VulkanApp {
             )
         };
 
-        (unsafe { Self::end_single_time_commands(device, data, command_buffer) })?;
+        (unsafe {
+            end_single_time_commands(
+                device,
+                data.graphics_queue,
+                data.command_pool,
+                command_buffer,
+            )
+        })?;
 
         Ok(())
     }
@@ -1676,6 +1658,7 @@ impl VulkanApp {
     }
 
     pub unsafe fn destroy(&mut self) {
+        info!("Destroying VulkanApp");
         unsafe {
             self.data
                 .buffer_manager
@@ -1696,9 +1679,9 @@ impl VulkanApp {
                 .destroy_descriptor_set_layout(self.data.descriptor_set_layout, None);
             self.device.destroy_buffer(self.data.index_buffer, None);
             self.device.free_memory(self.data.index_buffer_memory, None);
-            self.device.destroy_buffer(self.data.vertex_buffer, None);
-            self.device
-                .free_memory(self.data.vertex_buffer_memory, None);
+            self.data
+                .buffer_manager
+                .free_standard_buffer(StandardBufferMaps::Vertices);
 
             self.data
                 .in_flight_fences
