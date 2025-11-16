@@ -1,5 +1,6 @@
 use std::collections::HashMap;
-use std::fmt::Debug;
+use std::ffi::CString;
+use std::fmt::{Debug, Display};
 use std::ptr::copy_nonoverlapping;
 
 use anyhow::{Result, anyhow};
@@ -9,6 +10,7 @@ use vulkanalia::vk::*;
 use vulkanalia::{Device, Instance};
 
 use crate::engine::vertex::Vertex;
+use crate::engine::vulkan::VALIDATION_ENABLED;
 use crate::engine::vulkan::shared_helpers::{copy_buffer, get_memory_type_index};
 
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq, Hash)]
@@ -26,12 +28,34 @@ pub enum UniformBufferMaps {
     TextureSampler,
 }
 
-pub trait BufferManagerRequirements = Default + Eq + Hash + Debug;
+pub trait BufferManagerRequirements = Default + Eq + Hash + Debug + Display + Clone;
 
 pub enum BufferManagerCopyType<S, U> {
     TempBuffer,
     StandardBuffer(S),
     UniformBuffers(U, usize),
+}
+
+impl Display for StandardBufferMaps {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StandardBufferMaps::Vertices => f.write_str("StandardBufferMaps::Vertices"),
+            StandardBufferMaps::Indices => f.write_str("StandardBufferMaps::Indices"),
+        }
+    }
+}
+impl Display for UniformBufferMaps {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UniformBufferMaps::ModelViewProject => {
+                f.write_str("UniformBufferMaps::ModelViewProject")
+            }
+            UniformBufferMaps::SporadicBufferObject => {
+                f.write_str("UniformBufferMaps::SporadicBufferObject")
+            }
+            UniformBufferMaps::TextureSampler => f.write_str("UniformBufferMaps::TextureSampler"),
+        }
+    }
 }
 
 pub enum BufferManagerDataType<'a, T, S, U> {
@@ -244,6 +268,22 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
             properties,
         )?);
 
+        // Debug info for validation
+        if VALIDATION_ENABLED {
+            unsafe {
+                self.instance().set_debug_utils_object_name_ext(
+                    self.device().handle(),
+                    &DebugUtilsObjectNameInfoEXT {
+                        s_type: StructureType::DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+                        next: std::ptr::null(),
+                        object_type: ObjectType::BUFFER,
+                        object_handle: self.temp_buffer.unwrap().buffer.as_raw(),
+                        object_name: CString::new("TempBuffer").unwrap().as_ptr(),
+                    },
+                )?
+            };
+        }
+
         Ok(())
     }
 
@@ -253,6 +293,8 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
         }
 
         unsafe { self.temp_buffer.unwrap().free(&self.device()) };
+
+        self.temp_buffer = None;
     }
 
     pub fn get_uniform_buffers(&self, name: U) -> &Vec<BufferPair> {
@@ -306,6 +348,22 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
             properties,
         )?;
 
+        // Debug info for validation
+        if VALIDATION_ENABLED {
+            unsafe {
+                self.instance().set_debug_utils_object_name_ext(
+                    self.device().handle(),
+                    &DebugUtilsObjectNameInfoEXT {
+                        s_type: StructureType::DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+                        next: std::ptr::null(),
+                        object_type: ObjectType::BUFFER,
+                        object_handle: buffer_pair.buffer.as_raw(),
+                        object_name: CString::new(format!("{name}")).unwrap().as_ptr(),
+                    },
+                )?
+            };
+        }
+
         let device = self.device();
 
         self.buffers
@@ -340,6 +398,22 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
             usage,
             properties,
         )?;
+
+        // Debug info for validation
+        if VALIDATION_ENABLED {
+            unsafe {
+                self.instance().set_debug_utils_object_name_ext(
+                    self.device().handle(),
+                    &DebugUtilsObjectNameInfoEXT {
+                        s_type: StructureType::DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+                        next: std::ptr::null(),
+                        object_type: ObjectType::BUFFER,
+                        object_handle: buffer_pair.buffer.as_raw(),
+                        object_name: CString::new(format!("{name}")).unwrap().as_ptr(),
+                    },
+                )?
+            };
+        }
 
         self.uniform_buffers
             .entry(name)
