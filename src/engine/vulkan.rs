@@ -1250,7 +1250,6 @@ impl VulkanApp {
                     PipelineBindPoint::GRAPHICS,
                     data.pipeline,
                 );
-                device.unmap_memory(vertex_buffer_pair.memory);
                 device.cmd_bind_vertex_buffers(
                     *command_buffer,
                     0,
@@ -1417,7 +1416,6 @@ impl VulkanApp {
             data.buffer_manager
                 .copy_data_to_buffer::<[Vertex; VERTICES.len()]>(
                     BufferManagerDataType::TempBuffer {
-                        size: (size_of::<Vertex>() * VERTICES.len()) as u64,
                         graphics_queue: data.graphics_queue,
                         command_pool: data.command_pool,
                     },

@@ -37,18 +37,15 @@ pub enum BufferManagerCopyType<S, U> {
 pub enum BufferManagerDataType<'a, T, S, U> {
     Data(&'a [T]),
     TempBuffer {
-        size: u64,
         graphics_queue: Queue,
         command_pool: CommandPool,
     },
     StandardBuffer {
-        size: u64,
         name: S,
         graphics_queue: Queue,
         command_pool: CommandPool,
     },
     UniformBuffers {
-        size: u64,
         name: U,
         index: usize,
         graphics_queue: Queue,
@@ -163,7 +160,6 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
                 };
             }
             BufferManagerDataType::TempBuffer {
-                size,
                 graphics_queue,
                 command_pool,
             } => unsafe {
@@ -179,11 +175,10 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
                     command_pool,
                     source.buffer,
                     buffer_pair.buffer,
-                    size,
+                    size_of::<T>() as u64,
                 )?;
             },
             BufferManagerDataType::StandardBuffer {
-                size,
                 ref name,
                 graphics_queue,
                 command_pool,
@@ -201,11 +196,10 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
                     command_pool,
                     source.buffer,
                     buffer_pair.buffer,
-                    size,
+                    size_of::<T>() as u64,
                 )?;
             },
             BufferManagerDataType::UniformBuffers {
-                size,
                 ref name,
                 index,
                 graphics_queue,
@@ -226,7 +220,7 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
                     command_pool,
                     source.buffer,
                     buffer_pair.buffer,
-                    size,
+                    size_of::<T>() as u64,
                 )?;
             },
         };
