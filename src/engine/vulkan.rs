@@ -107,8 +107,6 @@ pub struct VulkanData {
     render_finished_semaphore: Vec<Semaphore>,
     in_flight_fences: Vec<Fence>,
     images_in_flight: Vec<Fence>,
-    index_buffer: Buffer,
-    index_buffer_memory: DeviceMemory,
     descriptor_pool: DescriptorPool,
     descriptor_sets: Vec<DescriptorSet>,
     swapchain_min_image_count: u32,
@@ -165,7 +163,7 @@ impl VulkanApp {
             Self::create_texture_image_view(&device, &mut self.data)?;
             Self::create_vertex_buffer(&mut self.data)?;
             Self::create_texture_sampler(&device, &mut self.data)?;
-            Self::create_index_buffer(&instance, &device, &mut self.data)?;
+            Self::create_index_buffer(&mut self.data)?;
             Self::create_uniform_buffers(&mut self.data)?;
             Self::create_descriptor_pool(&mut self.data)?;
             Self::create_descriptor_sets(&device, &mut self.data)?;
@@ -450,7 +448,7 @@ impl VulkanApp {
                     _ => false,
                 }
             })
-            .ok_or_else(|| anyhow!("Failed to find supported format!"))
+            .ok_or(anyhow!("Failed to find supported format!"))
     }
 
     unsafe fn get_depth_format(instance: &Instance, data: &VulkanData) -> Result<Format> {
@@ -1261,7 +1259,9 @@ impl VulkanApp {
                 );
                 device.cmd_bind_index_buffer(
                     *command_buffer,
-                    data.index_buffer,
+                    data.buffer_manager
+                        .get_standard_buffer(StandardBufferMaps::Indices)
+                        .buffer,
                     0,
                     IndexType::UINT16,
                 );
@@ -1395,8 +1395,10 @@ impl VulkanApp {
 
     unsafe fn create_vertex_buffer(data: &mut VulkanData) -> Result<()> {
         unsafe {
+            type VertexBufferSize = [Vertex; VERTICES.len()];
+
             data.buffer_manager
-                .allocate_temp_buffer::<[Vertex; VERTICES.len()]>(
+                .allocate_temp_buffer::<VertexBufferSize>(
                     BufferUsageFlags::TRANSFER_SRC,
                     MemoryPropertyFlags::HOST_COHERENT | MemoryPropertyFlags::HOST_VISIBLE,
                 )?;
@@ -1407,14 +1409,14 @@ impl VulkanApp {
             )?;
 
             data.buffer_manager
-                .allocate_new_standard_buffer::<[Vertex; VERTICES.len()]>(
+                .allocate_new_standard_buffer::<VertexBufferSize>(
                     StandardBufferMaps::Vertices,
                     BufferUsageFlags::VERTEX_BUFFER | BufferUsageFlags::TRANSFER_DST,
-                    MemoryPropertyFlags::DEVICE_LOCAL | MemoryPropertyFlags::HOST_VISIBLE,
+                    MemoryPropertyFlags::DEVICE_LOCAL,
                 )?;
 
             data.buffer_manager
-                .copy_data_to_buffer::<[Vertex; VERTICES.len()]>(
+                .copy_data_to_buffer::<VertexBufferSize>(
                     BufferManagerDataType::TempBuffer {
                         graphics_queue: data.graphics_queue,
                         command_pool: data.command_pool,
@@ -1428,58 +1430,38 @@ impl VulkanApp {
         Ok(())
     }
 
-    unsafe fn create_index_buffer(
-        instance: &Instance,
-        device: &Device,
-        data: &mut VulkanData,
-    ) -> Result<()> {
-        let size = std::mem::size_of_val(INDICES) as u64;
+    unsafe fn create_index_buffer(data: &mut VulkanData) -> Result<()> {
+        unsafe {
+            type IndexBufferSize = [u16; INDICES.len()];
 
-        let (staging_buffer, staging_buffer_memory) = unsafe {
-            Self::create_buffer(
-                instance,
-                device,
-                data,
-                size,
-                BufferUsageFlags::TRANSFER_SRC,
-                MemoryPropertyFlags::HOST_COHERENT | MemoryPropertyFlags::HOST_VISIBLE,
-            )
-        }?;
+            data.buffer_manager
+                .allocate_temp_buffer::<IndexBufferSize>(
+                    BufferUsageFlags::TRANSFER_SRC,
+                    MemoryPropertyFlags::HOST_COHERENT | MemoryPropertyFlags::HOST_VISIBLE,
+                )?;
 
-        let memory =
-            unsafe { device.map_memory(staging_buffer_memory, 0, size, MemoryMapFlags::empty()) }?;
+            data.buffer_manager.copy_data_to_buffer(
+                BufferManagerDataType::Data(INDICES),
+                BufferManagerCopyType::TempBuffer,
+            )?;
 
-        unsafe { copy_nonoverlapping(INDICES.as_ptr(), memory.cast(), INDICES.len()) };
+            data.buffer_manager
+                .allocate_new_standard_buffer::<IndexBufferSize>(
+                    StandardBufferMaps::Indices,
+                    BufferUsageFlags::INDEX_BUFFER | BufferUsageFlags::TRANSFER_DST,
+                    MemoryPropertyFlags::DEVICE_LOCAL,
+                )?;
 
-        unsafe { device.unmap_memory(staging_buffer_memory) };
+            data.buffer_manager.copy_data_to_buffer::<IndexBufferSize>(
+                BufferManagerDataType::TempBuffer {
+                    graphics_queue: data.graphics_queue,
+                    command_pool: data.command_pool,
+                },
+                BufferManagerCopyType::StandardBuffer(StandardBufferMaps::Indices),
+            )?;
 
-        let (index_buffer, index_buffer_memory) = unsafe {
-            Self::create_buffer(
-                instance,
-                device,
-                data,
-                size,
-                BufferUsageFlags::TRANSFER_DST | BufferUsageFlags::INDEX_BUFFER,
-                MemoryPropertyFlags::DEVICE_LOCAL,
-            )
-        }?;
-
-        data.index_buffer = index_buffer;
-        data.index_buffer_memory = index_buffer_memory;
-
-        (unsafe {
-            copy_buffer(
-                device,
-                data.graphics_queue,
-                data.command_pool,
-                staging_buffer,
-                index_buffer,
-                size,
-            )
-        })?;
-
-        unsafe { device.destroy_buffer(staging_buffer, None) };
-        unsafe { device.free_memory(staging_buffer_memory, None) };
+            data.buffer_manager.free_temp_buffer()
+        };
 
         Ok(())
     }
@@ -1664,11 +1646,12 @@ impl VulkanApp {
                 .free_memory(self.data.texture_image_memory, None);
             self.device
                 .destroy_descriptor_set_layout(self.data.descriptor_set_layout, None);
-            self.device.destroy_buffer(self.data.index_buffer, None);
-            self.device.free_memory(self.data.index_buffer_memory, None);
             self.data
                 .buffer_manager
                 .free_standard_buffer(StandardBufferMaps::Vertices);
+            self.data
+                .buffer_manager
+                .free_standard_buffer(StandardBufferMaps::Indices);
 
             self.data
                 .in_flight_fences
