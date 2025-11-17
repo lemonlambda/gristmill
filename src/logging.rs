@@ -22,7 +22,6 @@ fn get_backtrace_functions() -> Vec<String> {
         .flat_map(|frame| frame.symbols())
         .filter_map(|symbol| {
             let name = symbol.name()?.to_string();
-            // crude filter example, tweak for your project
             if name.contains("factory_game") {
                 let filename = symbol
                     .filename()

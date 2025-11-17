@@ -281,8 +281,8 @@ impl VulkanApp {
                 10.0,
             );
 
-        info!("View: {view:?}");
-        info!("Proj: {proj:?}");
+        // info!("View: {view:?}");
+        // info!("Proj: {proj:?}");
 
         let ubo = UniformBufferObject { view, proj };
 
