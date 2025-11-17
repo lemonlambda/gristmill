@@ -1,6 +1,8 @@
-- [ ] Name objects using VK_EXT_debug_utils
-    -[ ] Preferably make it automatically somewhat do this using buffer manager system
+- [~] Name objects using VK_EXT_debug_utils
+    - [x] Preferably make it automatically somewhat do this using buffer manager system
+    - [ ] Name descriptor set
 - [x] Make instancing work
-- [ ] Convert indices buffer to buffer manager
-- [ ] 
+- [x] Convert indices buffer to buffer manager
+- [ ] Expand buffer manager to handle multiple buffer formats (image buffer mainly)
+- [x] Make logging system use function names
 - [ ] 
