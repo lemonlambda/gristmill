@@ -5,6 +5,8 @@
 - [x] Convert indices buffer to buffer manager
 - [ ] Expand buffer manager to handle multiple buffer formats (image buffer mainly)
 - [x] Make logging system use function names
-- [ ] Camera movement fully
+- [x] Camera movement fully
 - [ ] Vertex movement
 - [ ] Grid generation system
+- [ ] Create an entity component system
+- [ ] Integrate entity component system with existing systems

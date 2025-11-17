@@ -82,6 +82,7 @@ pub struct VulkanApp {
     pub frame: usize,
     pub resized: bool,
     start: Instant,
+    pub camera_position: [f32; 2],
 }
 
 #[derive(Clone, Debug, Default)]
@@ -138,6 +139,7 @@ impl VulkanApp {
                 frame: 0,
                 resized: false,
                 start: Instant::now(),
+                camera_position: [0.0, 0.0],
             })
         }
     }
@@ -257,14 +259,18 @@ impl VulkanApp {
 
         #[rustfmt::skip]
         let view = Mat4::new(
-            1.0, 0.0, 0.0, 0.5,
-            0.0, 1.0, 0.0, 0.0,
+            1.0, 0.0, 0.0, -self.camera_position[0],
+            0.0, 1.0, 0.0, -self.camera_position[1],
             0.0, 0.0, 1.0, -5.0,
             0.0, 0.0, 0.0, 1.0,
         ).transpose();
 
+        #[rustfmt::skip]
         let correction = Mat4::new(
-            1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.5, 1.0,
+            1.0, 0.0, 0.0, 0.0,
+            0.0, -1.0, 0.0, 0.0,
+            0.0, 0.0, 0.5, 0.0,
+            0.0, 0.0, 0.5, 1.0,
         );
 
         let proj = correction
