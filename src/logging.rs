@@ -1,8 +1,7 @@
 use core::fmt;
-use std::{
-    env,
-    sync::atomic::{AtomicUsize, Ordering},
-};
+use std::env;
+#[cfg(not(debug_assertions))]
+use std::sync::atomic::AtomicUsize;
 
 use backtrace::Backtrace;
 use lazy_static::lazy_static;
@@ -126,20 +125,26 @@ pub fn setup_logging() {
 // https://github.com/seanmonstar/pretty-env-logger
 // This is all yoinked from https://docs.rs/pretty_env_logger/0.5.0/src/pretty_env_logger/lib.rs.html
 
+#[cfg(not(debug_assertions))]
 struct Padded<T> {
     value: T,
     width: usize,
 }
 
+#[cfg(not(debug_assertions))]
 impl<T: fmt::Display> fmt::Display for Padded<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{: <width$}", self.value, width = self.width)
     }
 }
 
+#[cfg(not(debug_assertions))]
 static MAX_MODULE_WIDTH: AtomicUsize = AtomicUsize::new(0);
 
+#[cfg(not(debug_assertions))]
 fn max_target_width(target: &str) -> usize {
+    use std::sync::atomic::Ordering;
+
     let max_width = MAX_MODULE_WIDTH.load(Ordering::Relaxed);
     if max_width < target.len() {
         MAX_MODULE_WIDTH.store(target.len(), Ordering::Relaxed);
