@@ -9,4 +9,7 @@
 - [ ] Vertex movement
 - [ ] Grid generation system
 - [ ] Create an entity component system
+    - [ ] Make an orderer system for the entity component system
+    - [ ] Add functions for obtaining and using resources / components.
+    - [ ]
 - [ ] Integrate entity component system with existing systems
