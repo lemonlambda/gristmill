@@ -1,5 +1,5 @@
 use anyhow::{Result, anyhow};
-use cgmath::{Deg, point3, vec3};
+use cgmath::{Deg, Matrix, SquareMatrix, Vector3, point3, vec3};
 use log::*;
 use std::{
     collections::HashSet,
@@ -255,11 +255,13 @@ impl VulkanApp {
     unsafe fn update_uniform_buffer(&self, image_index: usize) -> Result<()> {
         let _time = self.start.elapsed().as_secs_f32();
 
-        let view = Mat4::look_at_rh(
-            point3(2.0, 2.0, 2.0),
-            point3(0.0, 0.0, 0.0),
-            vec3(0.0, 0.0, 1.0),
-        );
+        #[rustfmt::skip]
+        let view = Mat4::new(
+            1.0, 0.0, 0.0, 0.5,
+            0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, -5.0,
+            0.0, 0.0, 0.0, 1.0,
+        ).transpose();
 
         let correction = Mat4::new(
             1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.5, 1.0,
@@ -267,11 +269,14 @@ impl VulkanApp {
 
         let proj = correction
             * cgmath::perspective(
-                Deg(45.0),
+                Deg(60.0),
                 self.data.swapchain_extent.width as f32 / self.data.swapchain_extent.height as f32,
                 0.1,
                 10.0,
             );
+
+        info!("View: {view:?}");
+        info!("Proj: {proj:?}");
 
         let ubo = UniformBufferObject { view, proj };
 
@@ -1202,7 +1207,14 @@ impl VulkanApp {
 
         data.command_buffers = unsafe { device.allocate_command_buffers(&allocate_info) }?;
 
-        let model = Mat4::from_axis_angle(vec3(0.0, 0.0, 1.0), Deg(0.0));
+        #[rustfmt::skip]
+        let model = Mat4::new(
+            1.0, 0.0, 0.0, -0.5,
+            0.0, 1.0, 0.0, 0.5,
+            0.0, 0.0, 1.0, 0.0,
+            0.0, 0.0, 0.0, 1.0
+        ).transpose();
+        // let model = Mat4::identity();
 
         let model_bytes: &[u8] = unsafe {
             std::slice::from_raw_parts(&model as *const Mat4 as *const u8, size_of::<Mat4>())
