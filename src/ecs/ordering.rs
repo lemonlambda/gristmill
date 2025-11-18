@@ -23,27 +23,21 @@ pub trait Ordering<T> {
     fn after(&mut self, system: Self::SystemType) -> SystemOrder<T>;
 }
 
-impl Ordering<System> for System {
-    type SystemType = System;
+impl<T: Clone> Ordering<T> for SystemOrder<T> {
+    type SystemType = T;
 
-    fn after(&mut self, system: Self::SystemType) -> SystemOrder<System> {
-        SystemOrder {
-            order: vec![*self, system],
-        }
-    }
-}
-
-impl Ordering<System> for SystemOrder<System> {
-    type SystemType = System;
-
-    fn after(&mut self, system: Self::SystemType) -> SystemOrder<System> {
+    fn after(&mut self, system: Self::SystemType) -> SystemOrder<T> {
         self.order.push(system);
         self.clone()
     }
 }
 
-impl From<System> for SystemOrder<System> {
-    fn from(val: System) -> Self {
-        SystemOrder { order: vec![val] }
+impl<T: Copy> Ordering<T> for T {
+    type SystemType = T;
+
+    fn after(&mut self, system: Self::SystemType) -> SystemOrder<T> {
+        SystemOrder {
+            order: vec![*self, system],
+        }
     }
 }

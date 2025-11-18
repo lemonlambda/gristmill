@@ -15,8 +15,12 @@ use winit::event_loop::{EventLoop, EventLoopWindowTarget};
 type WinitEvent = winit::event::Event<()>;
 
 use crate::{
-    ecs::events::{LemgineEvent, LemgineEventData},
-    ecs::ordering::SystemOrder,
+    ecs::{
+        events::{
+            EcsEvent, EcsEventData, EventDataWrapper, EventWrapper, LemgineEvent, LemgineEventData,
+        },
+        ordering::SystemOrder,
+    },
     engine::Engine,
 };
 
@@ -67,19 +71,21 @@ impl Manager {
         self
     }
 
-    pub fn add_event_handler<S: Into<SystemOrder<EventSystem>>>(
+    pub fn add_event_handler<E: EventWrapper + 'static, S: Into<SystemOrder<EventSystem>>>(
         mut self,
-        event: LemgineEvent,
+        event: E,
         system: S,
     ) -> Self {
-        self.event_systems.entry(event).or_insert(system.into());
+        self.event_systems
+            .entry(Box::new(event))
+            .or_insert(system.into());
         self
     }
 
     pub fn raise_event(&self, event: LemgineEvent, data: LemgineEventData) -> Result<()> {
         if let Some(systems) = self.event_systems.get(&event) {
             for system in systems.clone().order {
-                match system(&self.world, data) {
+                match system(&self.world, data.clone()) {
                     Ok(_) => {}
                     Err(err) => return Err(anyhow!(err)),
                 };
@@ -111,12 +117,13 @@ impl Manager {
     }
 
     pub fn run(mut self) -> Result<()> {
+        let event_loop = EventLoop::new()?;
+        self.world.add_resource(Engine::new(&event_loop));
+
         for system in self.startup_systems.order.iter() {
             system(&self.world)?;
         }
 
-        let event_loop = EventLoop::new()?;
-        self.world.add_resource(Engine::new(&event_loop));
         event_loop.run(move |event, elwt| {
             for system in self.winit_event_systems.clone().order.iter() {
                 system(&self.world, event.clone(), elwt).unwrap();
@@ -208,7 +215,14 @@ impl World {
             .collect()
     }
 
-    pub fn raise_event(&self, event: LemgineEvent, data: LemgineEventData) {
-        self.new_events.write().unwrap().push((event, data));
+    pub fn raise_event<E: EventWrapper + 'static, D: EventDataWrapper + 'static>(
+        &self,
+        event: E,
+        data: D,
+    ) {
+        self.new_events
+            .write()
+            .unwrap()
+            .push((Box::new(event), Box::new(data)));
     }
 }
