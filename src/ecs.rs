@@ -1,23 +1,48 @@
 //! Hell where Entities and Components and Systems live
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
+use log::*;
 use std::{
-    any::Any,
+    any::{Any, TypeId},
     collections::HashMap,
-    sync::{Arc, RwLock},
+    mem::transmute,
+    sync::{
+        Arc, MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLock, RwLockReadGuard,
+        RwLockWriteGuard,
+    },
 };
 
 use crate::ecs::ordering::{Ordering, SystemOrder};
 
 pub mod ordering;
 
-pub type System = fn(World) -> Result<()>;
+pub type System = fn(&World) -> Result<()>;
+pub type EventSystem = fn(&World, EventData) -> Result<()>;
+
+#[derive(Clone, Copy, Hash, Eq, PartialEq)]
+pub enum Direction {
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
+#[derive(Clone, Copy, Hash, Eq, PartialEq)]
+pub enum Event {
+    Movement,
+}
+
+#[derive(Clone, Copy, Hash, Eq, PartialEq)]
+pub enum EventData {
+    Movement(Direction),
+}
 
 /// Should manage everything related to the ECS
 pub struct Manager {
     pub world: World,
-    pub startup_systems: SystemOrder,
-    pub systems: SystemOrder,
+    pub startup_systems: SystemOrder<System>,
+    pub systems: SystemOrder<System>,
+    pub event_systems: HashMap<Event, SystemOrder<EventSystem>>,
 }
 
 impl Manager {
@@ -26,36 +51,152 @@ impl Manager {
             world: World::new(),
             startup_systems: SystemOrder::empty(),
             systems: SystemOrder::empty(),
+            event_systems: HashMap::new(),
         }
     }
-    pub fn add_startup_systems<S: Into<SystemOrder>>(mut self, systems: S) -> Self {
+
+    pub fn add_startup_systems<S: Into<SystemOrder<System>>>(mut self, systems: S) -> Self {
         self.startup_systems = systems.into();
         self
     }
-    pub fn run(mut self) -> Result<()> {
-        for system in self.startup_systems.order {
-            system(self.world.clone())?;
+
+    pub fn add_systems<S: Into<SystemOrder<System>>>(mut self, systems: S) -> Self {
+        self.systems = systems.into();
+        self
+    }
+
+    pub fn add_event_handler<S: Into<SystemOrder<EventSystem>>>(
+        mut self,
+        event: Event,
+        system: S,
+    ) -> Self {
+        self.event_systems.entry(event).or_insert(system.into());
+        self
+    }
+
+    pub fn raise_event(&self, event: Event, data: EventData) -> Result<()> {
+        if let Some(systems) = self.event_systems.get(&event) {
+            for system in systems.clone().order {
+                match system(&self.world, data) {
+                    Ok(_) => {}
+                    Err(err) => return Err(anyhow!(err)),
+                };
+            }
         }
 
         Ok(())
     }
+
+    pub fn check_events(&mut self) -> Result<()> {
+        let events = self.world.new_events.read().unwrap();
+
+        // Check if any events have been raised
+        if events.is_empty() {
+            return Ok(());
+        }
+
+        drop(events);
+
+        let mut events = self.world.new_events.write().unwrap();
+
+        for (event, data) in events.clone().into_iter() {
+            self.raise_event(event, data)?;
+        }
+
+        events.clear();
+
+        Ok(())
+    }
+
+    pub fn run(mut self) -> Result<()> {
+        for system in self.startup_systems.order.iter() {
+            system(&self.world)?;
+        }
+
+        loop {
+            for system in self.systems.clone().order.iter() {
+                system(&self.world)?;
+            }
+
+            self.check_events()?;
+        }
+    }
 }
 
-pub type Resource = HashMap<Box<dyn Any>, Box<dyn Any>>;
-pub type Component = HashMap<Box<dyn Any>, Vec<Box<dyn Any>>>;
+pub type Resource = Arc<RwLock<Box<dyn Any>>>;
+pub type Component = Arc<RwLock<Box<dyn Any>>>;
 
 /// A whole new world!
 #[derive(Clone)]
 pub struct World {
-    resources: Arc<RwLock<Resource>>,
-    components: Arc<RwLock<Component>>,
+    resources: HashMap<TypeId, Resource>,
+    components: HashMap<TypeId, Vec<Component>>,
+    new_events: Arc<RwLock<Vec<(Event, EventData)>>>,
 }
 
 impl World {
     pub fn new() -> Self {
         Self {
-            resources: Arc::new(RwLock::new(HashMap::new())),
-            components: Arc::new(RwLock::new(HashMap::new())),
+            resources: HashMap::new(),
+            components: HashMap::new(),
+            new_events: Arc::new(RwLock::new(vec![])),
         }
+    }
+
+    pub fn add_resource<T: Any>(&mut self, resource: T) {
+        self.resources
+            .entry(TypeId::of::<T>())
+            .or_insert(Arc::new(RwLock::new(Box::new(resource))));
+    }
+
+    pub fn get_resource<T: Any>(&self) -> MappedRwLockReadGuard<'_, Box<T>> {
+        let reading = self
+            .resources
+            .get(&TypeId::of::<T>())
+            .unwrap()
+            .read()
+            .unwrap();
+        RwLockReadGuard::map(reading, |r| unsafe { transmute(r) })
+    }
+
+    pub fn get_resource_mut<T: Any>(&self) -> MappedRwLockWriteGuard<'_, Box<T>> {
+        let reading = self
+            .resources
+            .get(&TypeId::of::<T>())
+            .unwrap()
+            .write()
+            .unwrap();
+        RwLockWriteGuard::map(reading, |r| unsafe { transmute(r) })
+    }
+
+    pub fn add_component<T: Any>(&mut self, component: T) {
+        if let Some(value) = self.components.get_mut(&TypeId::of::<T>()) {
+            value.push(Arc::new(RwLock::new(Box::new(component))));
+        } else {
+            self.components.insert(
+                TypeId::of::<T>(),
+                vec![Arc::new(RwLock::new(Box::new(component)))],
+            );
+        }
+    }
+
+    pub fn get_components<T: Any>(&self) -> Vec<MappedRwLockReadGuard<'_, Box<T>>> {
+        let reading = self.components.get(&TypeId::of::<T>()).unwrap();
+        reading
+            .iter()
+            .map(|v| RwLockReadGuard::map(v.read().unwrap(), |r| unsafe { transmute(r) }))
+            .collect()
+    }
+
+    pub fn get_components_mut<T: Any>(&self) -> Vec<MappedRwLockWriteGuard<'_, Box<T>>> {
+        let reading = self.components.get(&TypeId::of::<T>()).unwrap();
+        reading
+            .iter()
+            .map(|v| RwLockWriteGuard::map(v.write().unwrap(), |r| unsafe { transmute(r) }))
+            .collect()
+    }
+
+    pub fn raise_event(&self, event: Event, data: EventData) {
+        self.new_events.write().unwrap().push((event, data));
     }
 }

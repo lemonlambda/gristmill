@@ -2,42 +2,48 @@ use crate::ecs::{System, World};
 use anyhow::Result;
 
 #[derive(Clone)]
-pub struct SystemOrder {
-    pub order: Vec<System>,
+pub struct SystemOrder<T> {
+    pub order: Vec<T>,
 }
 
-impl SystemOrder {
+impl<T> SystemOrder<T> {
+    pub fn new(system: T) -> Self {
+        SystemOrder {
+            order: vec![system],
+        }
+    }
+
     pub fn empty() -> Self {
         Self { order: vec![] }
     }
 }
 
-pub trait Ordering {
+pub trait Ordering<T> {
     type SystemType;
 
-    fn after(&mut self, system: Self::SystemType) -> SystemOrder;
+    fn after(&mut self, system: Self::SystemType) -> SystemOrder<T>;
 }
 
-impl Ordering for System {
+impl Ordering<System> for System {
     type SystemType = System;
 
-    fn after(&mut self, system: Self::SystemType) -> SystemOrder {
+    fn after(&mut self, system: Self::SystemType) -> SystemOrder<System> {
         SystemOrder {
             order: vec![*self, system],
         }
     }
 }
 
-impl Ordering for SystemOrder {
+impl Ordering<System> for SystemOrder<System> {
     type SystemType = System;
 
-    fn after(&mut self, system: Self::SystemType) -> SystemOrder {
+    fn after(&mut self, system: Self::SystemType) -> SystemOrder<System> {
         self.order.push(system);
         self.clone()
     }
 }
 
-impl From<System> for SystemOrder {
+impl From<System> for SystemOrder<System> {
     fn from(val: System) -> Self {
         SystemOrder { order: vec![val] }
     }
