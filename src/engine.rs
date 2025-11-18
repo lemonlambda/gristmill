@@ -21,7 +21,7 @@ impl Engine {
         let window = WindowBuilder::new()
             .with_title("Factory Game")
             .with_inner_size(LogicalSize::new(1024, 768))
-            .build(&event_loop)?;
+            .build(event_loop)?;
         info!("Creating vulkan app");
         let vulkan_app = unsafe { VulkanApp::create(window)? };
         Ok(Self {
