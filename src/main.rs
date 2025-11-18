@@ -5,7 +5,6 @@ extern crate pretty_env_logger;
 use crate::ecs::Manager;
 use crate::logging::setup_logging;
 use anyhow::Result;
-use log::*;
 
 mod ecs;
 mod engine;

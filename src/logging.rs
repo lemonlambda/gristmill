@@ -1,4 +1,3 @@
-use core::fmt;
 use std::env;
 #[cfg(not(debug_assertions))]
 use std::sync::atomic::AtomicUsize;

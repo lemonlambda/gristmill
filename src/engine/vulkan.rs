@@ -1,5 +1,5 @@
 use anyhow::{Result, anyhow};
-use cgmath::{Deg, Matrix, SquareMatrix, Vector3, point3, vec3};
+use cgmath::{Deg, Matrix};
 use log::*;
 use std::{
     collections::HashSet,
@@ -26,7 +26,7 @@ use crate::engine::{
             UniformBufferMaps,
         },
         shared_helpers::{
-            begin_single_time_commands, copy_buffer, end_single_time_commands,
+            begin_single_time_commands, end_single_time_commands,
             get_memory_type_index,
         },
     },

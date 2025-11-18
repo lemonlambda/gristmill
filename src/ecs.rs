@@ -1,7 +1,6 @@
 //! Hell where Entities and Components and Systems live
 
 use anyhow::{Result, anyhow};
-use log::*;
 use std::{
     any::{Any, TypeId},
     collections::HashMap,
@@ -39,7 +38,7 @@ pub struct Manager {
 
 impl Manager {
     pub fn new() -> Result<Self> {
-        let mut world = World::new();
+        let world = World::new();
 
         Ok(Self {
             world,

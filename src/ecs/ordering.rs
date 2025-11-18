@@ -1,5 +1,4 @@
-use crate::ecs::{System, World};
-use anyhow::Result;
+use crate::ecs::System;
 
 #[derive(Clone)]
 pub struct SystemOrder<T> {

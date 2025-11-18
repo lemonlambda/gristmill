@@ -2,7 +2,6 @@ use anyhow::{Result, anyhow};
 use vulkanalia::vk::*;
 use vulkanalia::{Device, Instance};
 
-use crate::engine::vulkan::VulkanData;
 
 pub unsafe fn get_memory_type_index(
     instance: &Instance,

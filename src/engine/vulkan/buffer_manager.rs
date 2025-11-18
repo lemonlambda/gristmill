@@ -4,12 +4,10 @@ use std::fmt::{Debug, Display};
 use std::ptr::copy_nonoverlapping;
 
 use anyhow::{Result, anyhow};
-use log::*;
 use std::hash::Hash;
 use vulkanalia::vk::*;
 use vulkanalia::{Device, Instance};
 
-use crate::engine::vertex::Vertex;
 use crate::engine::vulkan::VALIDATION_ENABLED;
 use crate::engine::vulkan::shared_helpers::{copy_buffer, get_memory_type_index};
 

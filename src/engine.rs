@@ -2,8 +2,7 @@ use anyhow::Result;
 use log::info;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::EventLoopWindowTarget;
-use winit::keyboard::KeyCode;
-use winit::window::{Window, WindowBuilder};
+use winit::window::WindowBuilder;
 use winit::{dpi::LogicalSize, event_loop::EventLoop};
 
 use crate::ecs::World;
@@ -56,9 +55,9 @@ pub fn engine_main(
                 }
             }
             WindowEvent::KeyboardInput {
-                device_id,
-                event,
-                is_synthetic,
+                device_id: _,
+                event: _,
+                is_synthetic: _,
             } => {}
             // Destroy our Vulkan app.
             WindowEvent::CloseRequested => {
