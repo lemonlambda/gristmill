@@ -11,43 +11,22 @@ use std::{
         RwLockWriteGuard,
     },
 };
-use winit::{
-    dpi::LogicalSize,
-    event::WindowEvent,
-    event_loop::{EventLoop, EventLoopWindowTarget},
-    window::WindowBuilder,
-};
+use winit::event_loop::{EventLoop, EventLoopWindowTarget};
 
 type WinitEvent = winit::event::Event<()>;
 
 use crate::{
-    ecs::ordering::{Ordering, SystemOrder},
+    ecs::events::{LemgineEvent, LemgineEventData},
+    ecs::ordering::SystemOrder,
     engine::Engine,
 };
 
+pub mod events;
 pub mod ordering;
 
 pub type System = fn(&World) -> Result<()>;
-pub type EventSystem = fn(&World, EventData) -> Result<()>;
+pub type EventSystem = fn(&World, LemgineEventData) -> Result<()>;
 pub type WinitEventSystem = fn(&World, WinitEvent, &EventLoopWindowTarget<()>) -> Result<()>;
-
-#[derive(Clone, Copy, Hash, Eq, PartialEq)]
-pub enum Direction {
-    Up,
-    Down,
-    Left,
-    Right,
-}
-
-#[derive(Clone, Copy, Hash, Eq, PartialEq)]
-pub enum Event {
-    Movement,
-}
-
-#[derive(Clone, Copy, Hash, Eq, PartialEq)]
-pub enum EventData {
-    Movement(Direction),
-}
 
 /// Should manage everything related to the ECS
 pub struct Manager {
@@ -55,7 +34,7 @@ pub struct Manager {
     pub startup_systems: SystemOrder<System>,
     pub systems: SystemOrder<System>,
     pub winit_event_systems: SystemOrder<WinitEventSystem>,
-    pub event_systems: HashMap<Event, SystemOrder<EventSystem>>,
+    pub event_systems: HashMap<LemgineEvent, SystemOrder<EventSystem>>,
 }
 
 impl Manager {
@@ -91,14 +70,14 @@ impl Manager {
 
     pub fn add_event_handler<S: Into<SystemOrder<EventSystem>>>(
         mut self,
-        event: Event,
+        event: LemgineEvent,
         system: S,
     ) -> Self {
         self.event_systems.entry(event).or_insert(system.into());
         self
     }
 
-    pub fn raise_event(&self, event: Event, data: EventData) -> Result<()> {
+    pub fn raise_event(&self, event: LemgineEvent, data: LemgineEventData) -> Result<()> {
         if let Some(systems) = self.event_systems.get(&event) {
             for system in systems.clone().order {
                 match system(&self.world, data) {
@@ -165,7 +144,7 @@ pub type Component = Arc<RwLock<Box<dyn Any>>>;
 pub struct World {
     resources: HashMap<TypeId, Resource>,
     components: HashMap<TypeId, Vec<Component>>,
-    new_events: Arc<RwLock<Vec<(Event, EventData)>>>,
+    new_events: Arc<RwLock<Vec<(LemgineEvent, LemgineEventData)>>>,
 }
 
 impl World {
@@ -230,7 +209,7 @@ impl World {
             .collect()
     }
 
-    pub fn raise_event(&self, event: Event, data: EventData) {
+    pub fn raise_event(&self, event: LemgineEvent, data: LemgineEventData) {
         self.new_events.write().unwrap().push((event, data));
     }
 }
