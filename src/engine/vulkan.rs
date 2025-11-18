@@ -73,7 +73,7 @@ extern "system" fn debug_callback(
 #[error("{0}")]
 pub struct SuitabilityError(pub &'static str);
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct VulkanApp {
     pub entry: Entry,
     pub instance: Instance,
@@ -83,6 +83,7 @@ pub struct VulkanApp {
     pub resized: bool,
     start: Instant,
     pub camera_position: [f32; 2],
+    pub window: Window,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -122,15 +123,41 @@ pub struct VulkanData {
 }
 
 impl VulkanApp {
-    pub unsafe fn create(window: &Window) -> Result<Self> {
+    pub unsafe fn create(window: Window) -> Result<Self> {
         unsafe {
             let loader = LibloadingLoader::new(LIBRARY)?;
             let entry = Entry::new(loader).map_err(|b| anyhow!("{}", b))?;
             let mut data = VulkanData::default();
-            let instance = Self::create_instance(window, &entry, &mut data)?;
+            let instance = Self::create_instance(&window, &entry, &mut data)?;
             data.surface = create_surface(&instance, &window, &window)?;
             Self::pick_physical_device(&instance, &mut data)?;
             let device = Self::create_logical_device(&entry, &instance, &mut data)?;
+            unsafe {
+                data.buffer_manager = BufferManager::<StandardBufferMaps, UniformBufferMaps>::new(
+                    instance.clone(),
+                    device.clone(),
+                    data.physical_device,
+                );
+                Self::create_swapchain(&window, &instance, &device, &mut data)?;
+                Self::create_swapchain_image_views(&device, &mut data)?;
+                Self::create_render_pass(&instance, &device, &mut data)?;
+                Self::create_descriptor_set_layout(&mut data)?;
+                Self::create_pipeline(&device, &mut data)?;
+                Self::create_command_pool(&instance, &device, &mut data)?;
+                Self::create_depth_objects(&instance, &device, &mut data)?;
+                Self::create_framebuffers(&device, &mut data)?;
+                Self::create_texture_image(&instance, &device, &mut data)?;
+                Self::create_texture_image_view(&device, &mut data)?;
+                Self::create_vertex_buffer(&mut data)?;
+                Self::create_texture_sampler(&device, &mut data)?;
+                Self::create_index_buffer(&mut data)?;
+                Self::create_uniform_buffers(&mut data)?;
+                Self::create_descriptor_pool(&mut data)?;
+                Self::create_descriptor_sets(&device, &mut data)?;
+                Self::create_command_buffers(&device, &mut data)?;
+                Self::create_sync_objects(&device, &mut data)?;
+                info!("Woo created everything, hard work ain't it?");
+            }
             Ok(Self {
                 entry,
                 instance,
@@ -140,43 +167,12 @@ impl VulkanApp {
                 resized: false,
                 start: Instant::now(),
                 camera_position: [0.0, 0.0],
+                window,
             })
         }
     }
 
-    pub unsafe fn setup_vulkan(&mut self, window: &Window) -> Result<()> {
-        let instance = self.instance.clone();
-        let device = self.device.clone();
-        unsafe {
-            self.data.buffer_manager = BufferManager::<StandardBufferMaps, UniformBufferMaps>::new(
-                self.instance.clone(),
-                self.device.clone(),
-                self.data.physical_device,
-            );
-            Self::create_swapchain(window, &instance, &device, &mut self.data)?;
-            Self::create_swapchain_image_views(&device, &mut self.data)?;
-            Self::create_render_pass(&instance, &device, &mut self.data)?;
-            Self::create_descriptor_set_layout(&mut self.data)?;
-            Self::create_pipeline(&device, &mut self.data)?;
-            Self::create_command_pool(&instance, &device, &mut self.data)?;
-            Self::create_depth_objects(&instance, &device, &mut self.data)?;
-            Self::create_framebuffers(&device, &mut self.data)?;
-            Self::create_texture_image(&instance, &device, &mut self.data)?;
-            Self::create_texture_image_view(&device, &mut self.data)?;
-            Self::create_vertex_buffer(&mut self.data)?;
-            Self::create_texture_sampler(&device, &mut self.data)?;
-            Self::create_index_buffer(&mut self.data)?;
-            Self::create_uniform_buffers(&mut self.data)?;
-            Self::create_descriptor_pool(&mut self.data)?;
-            Self::create_descriptor_sets(&device, &mut self.data)?;
-            Self::create_command_buffers(&device, &mut self.data)?;
-            Self::create_sync_objects(&device, &mut self.data)?;
-            info!("Woo created everything, hard work ain't it?");
-        }
-        Ok(())
-    }
-
-    pub unsafe fn render(&mut self, window: &Window) -> Result<()> {
+    pub unsafe fn render(&mut self) -> Result<()> {
         trace!("Rendering");
         let in_flight_fence = self.data.in_flight_fences[self.frame];
 
@@ -196,7 +192,9 @@ impl VulkanApp {
 
         let image_index = match result {
             Ok((image_index, _)) => image_index as usize,
-            Err(ErrorCode::OUT_OF_DATE_KHR) => return unsafe { self.recreate_swapchain(window) },
+            Err(ErrorCode::OUT_OF_DATE_KHR) => {
+                return unsafe { self.recreate_swapchain() };
+            }
             Err(e) => return Err(anyhow!(e)),
         };
 
@@ -244,7 +242,7 @@ impl VulkanApp {
             result == Ok(SuccessCode::SUBOPTIMAL_KHR) || result == Err(ErrorCode::OUT_OF_DATE_KHR);
         if self.resized || changed {
             self.resized = false;
-            (unsafe { self.recreate_swapchain(window) })?;
+            (unsafe { self.recreate_swapchain() })?;
         } else if let Err(e) = result {
             return Err(anyhow!(e));
         }
@@ -1331,12 +1329,12 @@ impl VulkanApp {
         Ok(())
     }
 
-    unsafe fn recreate_swapchain(&mut self, window: &Window) -> Result<()> {
+    unsafe fn recreate_swapchain(&mut self) -> Result<()> {
         debug!("Recreating Swapchain");
         unsafe {
             self.device.device_wait_idle()?;
             self.destroy_swapchain();
-            Self::create_swapchain(window, &self.instance, &self.device, &mut self.data)?;
+            Self::create_swapchain(&self.window, &self.instance, &self.device, &mut self.data)?;
             Self::create_swapchain_image_views(&self.device, &mut self.data)?;
             Self::create_render_pass(&self.instance, &self.device, &mut self.data)?;
             Self::create_pipeline(&self.device, &mut self.data)?;

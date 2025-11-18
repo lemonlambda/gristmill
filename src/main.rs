@@ -18,7 +18,7 @@ mod logging;
 fn main() -> Result<()> {
     setup_logging();
 
-    let mut manager = Manager::new()
+    let mut manager = Manager::new()?
         .add_startup_systems(
             SystemOrder::<System>::new(test_system)
                 .after(test_system_2)
@@ -33,10 +33,6 @@ fn main() -> Result<()> {
     manager.world.add_component(10);
 
     manager.run()?;
-
-    let engine = Engine::new()?;
-
-    engine.run()?;
 
     Ok(())
 }

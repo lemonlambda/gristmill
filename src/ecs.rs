@@ -11,13 +11,25 @@ use std::{
         RwLockWriteGuard,
     },
 };
+use winit::{
+    dpi::LogicalSize,
+    event::WindowEvent,
+    event_loop::{EventLoop, EventLoopWindowTarget},
+    window::WindowBuilder,
+};
 
-use crate::ecs::ordering::{Ordering, SystemOrder};
+type WinitEvent = winit::event::Event<()>;
+
+use crate::{
+    ecs::ordering::{Ordering, SystemOrder},
+    engine::Engine,
+};
 
 pub mod ordering;
 
 pub type System = fn(&World) -> Result<()>;
 pub type EventSystem = fn(&World, EventData) -> Result<()>;
+pub type WinitEventSystem = fn(&World, WinitEvent, &EventLoopWindowTarget<()>) -> Result<()>;
 
 #[derive(Clone, Copy, Hash, Eq, PartialEq)]
 pub enum Direction {
@@ -42,21 +54,33 @@ pub struct Manager {
     pub world: World,
     pub startup_systems: SystemOrder<System>,
     pub systems: SystemOrder<System>,
+    pub winit_event_systems: SystemOrder<WinitEventSystem>,
     pub event_systems: HashMap<Event, SystemOrder<EventSystem>>,
 }
 
 impl Manager {
-    pub fn new() -> Self {
-        Self {
-            world: World::new(),
+    pub fn new() -> Result<Self> {
+        let mut world = World::new();
+
+        Ok(Self {
+            world,
             startup_systems: SystemOrder::empty(),
             systems: SystemOrder::empty(),
+            winit_event_systems: SystemOrder::empty(),
             event_systems: HashMap::new(),
-        }
+        })
     }
 
     pub fn add_startup_systems<S: Into<SystemOrder<System>>>(mut self, systems: S) -> Self {
         self.startup_systems = systems.into();
+        self
+    }
+
+    pub fn add_winit_event_systems<S: Into<SystemOrder<WinitEventSystem>>>(
+        mut self,
+        systems: S,
+    ) -> Self {
+        self.winit_event_systems = systems.into();
         self
     }
 
@@ -113,13 +137,23 @@ impl Manager {
             system(&self.world)?;
         }
 
-        loop {
-            for system in self.systems.clone().order.iter() {
-                system(&self.world)?;
+        let event_loop = EventLoop::new()?;
+        self.world.add_resource(Engine::new(&event_loop));
+        event_loop.run(move |event, elwt| {
+            for system in self.winit_event_systems.clone().order.iter() {
+                system(&self.world, event.clone(), elwt).unwrap();
             }
 
-            self.check_events()?;
-        }
+            self.check_events().unwrap();
+
+            for system in self.systems.clone().order.iter() {
+                system(&self.world).unwrap();
+            }
+
+            self.check_events().unwrap();
+        })?;
+
+        Ok(())
     }
 }
 
