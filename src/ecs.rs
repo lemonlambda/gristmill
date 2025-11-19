@@ -16,14 +16,13 @@ type WinitEvent = winit::event::Event<()>;
 
 use crate::{
     ecs::{
-        events::{
-            EventDataWrapper, EventWrapper, LemgineEvent, LemgineEventData,
-        },
+        events::{EventDataWrapper, EventWrapper, LemgineEvent, LemgineEventData},
         ordering::SystemOrder,
     },
     engine::Engine,
 };
 
+pub mod chain;
 pub mod events;
 pub mod ordering;
 
