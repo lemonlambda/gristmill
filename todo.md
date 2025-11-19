@@ -12,4 +12,6 @@
     - [x] Make an orderer system for the entity component system
     - [x] Add functions for obtaining and using resources / components.
 - [x] Integrate entity component system with existing systems
-- [ ] System chaining trait
+- [x] System chaining trait
+- [x] System order concat
+- [x] Partial Manager
