@@ -8,8 +8,8 @@
 - [x] Camera movement fully
 - [ ] Vertex movement
 - [ ] Grid generation system
-- [ ] Create an entity component system
-    - [ ] Make an orderer system for the entity component system
-    - [ ] Add functions for obtaining and using resources / components.
-    - [ ]
-- [ ] Integrate entity component system with existing systems
+- [x] Create an entity component system
+    - [x] Make an orderer system for the entity component system
+    - [x] Add functions for obtaining and using resources / components.
+- [x] Integrate entity component system with existing systems
+- [ ] System chaining trait

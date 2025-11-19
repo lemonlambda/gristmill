@@ -36,9 +36,9 @@ pub fn engine_main(
     event: Event<()>,
     elwt: &EventLoopWindowTarget<()>,
 ) -> Result<()> {
-    let mut engine = world.try_get_resource_mut::<Engine>();
+    let engine = world.try_get_resource_mut::<Engine>();
 
-    if let None = engine {
+    if engine.is_none() {
         warn!("Couldn't get engine resource!");
         return Ok(());
     }
