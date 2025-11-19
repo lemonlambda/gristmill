@@ -36,7 +36,7 @@ pub fn movement_partial() -> PartialManager {
         .add_winit_event_systems((get_movement as WinitEventSystem,).order_up())
         .add_event_handler(
             MovementEvent::Moved,
-            (handle_movement as EventSystem).order_up(),
+            (handle_movement as EventSystem,).order_up(),
         )
 }
 

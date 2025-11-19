@@ -11,6 +11,15 @@ pub trait OrderUp<S> {
 }
 
 macro_rules! gen_order_up_impl {
+    (0, $f:ty) => {
+        impl OrderUp<$f> for ($f,) {
+            fn order_up(self) -> SystemOrder<$f> {
+                SystemOrder {
+                    order: vec![self.0],
+                }
+            }
+        }
+    };
     ($n:literal, $f:ty) => {
         seq!(T in 0..=$n {
             impl OrderUp<$f> for (#($f,)*) {
@@ -21,7 +30,7 @@ macro_rules! gen_order_up_impl {
                 }
             }
         });
-    }
+    };
 }
 
 gen_order_up_impl!(0, WinitEventSystem);
