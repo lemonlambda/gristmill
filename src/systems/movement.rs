@@ -7,8 +7,11 @@ use winit::{
 };
 
 use crate::ecs::{
-    World,
+    EventSystem, WinitEventSystem, World,
     events::{EcsEvent, EcsEventData, LemgineEventData},
+    order_up::OrderUp,
+    ordering::SystemOrder,
+    partial_manager::PartialManager,
 };
 
 #[derive(Clone, Hash, Eq, PartialEq)]
@@ -27,6 +30,15 @@ pub struct MovementData {
 }
 
 impl EcsEventData for MovementData {}
+
+pub fn movement_partial() -> PartialManager {
+    PartialManager::new()
+        .add_winit_event_systems((get_movement as WinitEventSystem,).order_up())
+        .add_event_handler(
+            MovementEvent::Moved,
+            (handle_movement as EventSystem).order_up(),
+        )
+}
 
 pub fn handle_movement(_world: &World, _event_data: LemgineEventData) -> Result<()> {
     info!("Got some movement here!");
