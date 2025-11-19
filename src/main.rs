@@ -2,6 +2,7 @@
 
 extern crate pretty_env_logger;
 
+use crate::ecs::order_up::OrderUp;
 use crate::ecs::ordering::{Ordering, SystemOrder};
 use crate::ecs::{EventSystem, Manager, WinitEventSystem};
 use crate::engine::engine_main;
@@ -20,7 +21,11 @@ fn main() -> Result<()> {
 
     let manager = Manager::new()?
         .add_winit_event_systems(
-            SystemOrder::<WinitEventSystem>::new(engine_main).after(get_movement),
+            (
+                engine_main as WinitEventSystem,
+                get_movement as WinitEventSystem,
+            )
+                .order_up(),
         )
         .add_event_handler(
             MovementEvent::Moved,

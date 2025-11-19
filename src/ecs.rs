@@ -18,12 +18,13 @@ use crate::{
     ecs::{
         events::{EventDataWrapper, EventWrapper, LemgineEvent, LemgineEventData},
         ordering::SystemOrder,
+        partial_manager::PartialManager,
     },
     engine::Engine,
 };
 
-pub mod chain;
 pub mod events;
+pub mod order_up;
 pub mod ordering;
 
 pub type System = fn(&World) -> Result<()>;
