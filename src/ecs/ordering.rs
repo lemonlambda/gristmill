@@ -1,4 +1,3 @@
-use crate::ecs::System;
 
 #[derive(Clone)]
 pub struct SystemOrder<T> {

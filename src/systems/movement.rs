@@ -1,15 +1,14 @@
 use anyhow::Result;
 use log::*;
 use winit::{
-    event::{Event, KeyEvent, WindowEvent},
+    event::{Event, WindowEvent},
     event_loop::EventLoopWindowTarget,
     keyboard::{KeyCode, PhysicalKey},
 };
 
 use crate::ecs::{
-    WinitEventSystem, World,
+    World,
     events::{EcsEvent, EcsEventData, LemgineEventData},
-    ordering::SystemOrder,
 };
 
 #[derive(Clone, Hash, Eq, PartialEq)]
@@ -29,7 +28,7 @@ pub struct MovementData {
 
 impl EcsEventData for MovementData {}
 
-pub fn handle_movement(world: &World, event_data: LemgineEventData) -> Result<()> {
+pub fn handle_movement(_world: &World, _event_data: LemgineEventData) -> Result<()> {
     info!("Got some movement here!");
 
     Ok(())

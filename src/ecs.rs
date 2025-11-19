@@ -1,7 +1,6 @@
 //! Hell where Entities and Components and Systems live
 
 use anyhow::{Result, anyhow};
-use log::*;
 use std::{
     any::{Any, TypeId},
     collections::HashMap,
@@ -18,7 +17,7 @@ type WinitEvent = winit::event::Event<()>;
 use crate::{
     ecs::{
         events::{
-            EcsEvent, EcsEventData, EventDataWrapper, EventWrapper, LemgineEvent, LemgineEventData,
+            EventDataWrapper, EventWrapper, LemgineEvent, LemgineEventData,
         },
         ordering::SystemOrder,
     },
