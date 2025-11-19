@@ -1,3 +1,4 @@
+use crate::ecs::{EventSystem, WinitEventSystem};
 
 #[derive(Clone)]
 pub struct SystemOrder<T> {
@@ -9,6 +10,15 @@ impl<T> SystemOrder<T> {
         SystemOrder {
             order: vec![system],
         }
+    }
+
+    pub fn extend(mut self, other: SystemOrder<T>) -> Self {
+        self.order.extend(other.order);
+        self
+    }
+
+    pub fn extend_mut_ref(&mut self, other: SystemOrder<T>) {
+        self.order.extend(other.order);
     }
 
     pub fn empty() -> Self {
