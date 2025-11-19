@@ -6,9 +6,9 @@ use std::{
     any::{Any, TypeId},
     collections::HashMap,
     mem::transmute,
+    rc::Rc,
     sync::{
-        Arc, MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLock, RwLockReadGuard,
-        RwLockWriteGuard,
+        MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
     },
 };
 use winit::event_loop::{EventLoop, EventLoopWindowTarget};
@@ -119,7 +119,8 @@ impl Manager {
 
     pub fn run(mut self) -> Result<()> {
         let event_loop = EventLoop::new()?;
-        self.world.add_resource(Engine::new(&event_loop));
+        let engine = Engine::new(&event_loop).unwrap();
+        self.world.add_resource(engine);
 
         for system in self.startup_systems.order.iter() {
             system(&self.world)?;
@@ -143,15 +144,15 @@ impl Manager {
     }
 }
 
-pub type Resource = Arc<RwLock<Box<dyn Any>>>;
-pub type Component = Arc<RwLock<Box<dyn Any>>>;
+pub type Resource = Rc<RwLock<Box<dyn Any>>>;
+pub type Component = Rc<RwLock<Box<dyn Any>>>;
 
 /// A whole new world!
 #[derive(Clone)]
 pub struct World {
     resources: HashMap<TypeId, Resource>,
     components: HashMap<TypeId, Vec<Component>>,
-    new_events: Arc<RwLock<Vec<(LemgineEvent, LemgineEventData)>>>,
+    new_events: Rc<RwLock<Vec<(LemgineEvent, LemgineEventData)>>>,
 }
 
 impl World {
@@ -159,43 +160,41 @@ impl World {
         Self {
             resources: HashMap::new(),
             components: HashMap::new(),
-            new_events: Arc::new(RwLock::new(vec![])),
+            new_events: Rc::new(RwLock::new(vec![])),
         }
     }
 
     pub fn add_resource<T: Any>(&mut self, resource: T) {
         self.resources
             .entry(TypeId::of::<T>())
-            .or_insert(Arc::new(RwLock::new(Box::new(resource))));
+            .or_insert(Rc::new(RwLock::new(Box::new(resource))));
     }
 
     pub fn get_resource<T: Any>(&self) -> MappedRwLockReadGuard<'_, Box<T>> {
-        let reading = self
-            .resources
-            .get(&TypeId::of::<T>())
-            .unwrap()
-            .read()
-            .unwrap();
-        RwLockReadGuard::map(reading, |r| unsafe { transmute(r) })
+        self.try_get_resource::<T>().unwrap()
+    }
+
+    pub fn try_get_resource<T: Any>(&self) -> Option<MappedRwLockReadGuard<'_, Box<T>>> {
+        let reading = self.resources.get(&TypeId::of::<T>())?.read().ok()?;
+        Some(RwLockReadGuard::map(reading, |r| unsafe { transmute(r) }))
     }
 
     pub fn get_resource_mut<T: Any>(&self) -> MappedRwLockWriteGuard<'_, Box<T>> {
-        let reading = self
-            .resources
-            .get(&TypeId::of::<T>())
-            .unwrap()
-            .write()
-            .unwrap();
-        RwLockWriteGuard::map(reading, |r| unsafe { transmute(r) })
+        self.try_get_resource_mut::<T>().unwrap()
+    }
+
+    pub fn try_get_resource_mut<T: Any>(&self) -> Option<MappedRwLockWriteGuard<'_, Box<T>>> {
+        let reading = self.resources.get(&TypeId::of::<T>())?.write().ok()?;
+        Some(RwLockWriteGuard::map(reading, |r| unsafe { transmute(r) }))
     }
 
     pub fn add_component<T: Any>(&mut self, component: T) {
         if let Some(value) = self.components.get_mut(&TypeId::of::<T>()) {
-            value.push(Arc::new(RwLock::new(Box::new(component))));
+            value.push(Rc::new(RwLock::new(Box::new(component))));
         } else {
             self.components.insert(
                 TypeId::of::<T>(),
-                vec![Arc::new(RwLock::new(Box::new(component)))],
+                vec![Rc::new(RwLock::new(Box::new(component)))],
             );
         }
     }

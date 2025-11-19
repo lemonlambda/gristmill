@@ -1,5 +1,5 @@
 use anyhow::Result;
-use log::info;
+use log::*;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::EventLoopWindowTarget;
 use winit::window::WindowBuilder;
@@ -36,7 +36,14 @@ pub fn engine_main(
     event: Event<()>,
     elwt: &EventLoopWindowTarget<()>,
 ) -> Result<()> {
-    let mut engine = world.get_resource_mut::<Engine>();
+    let mut engine = world.try_get_resource_mut::<Engine>();
+
+    if let None = engine {
+        warn!("Couldn't get engine resource!");
+        return Ok(());
+    }
+
+    let mut engine = engine.unwrap();
 
     match event {
         // Request a redraw when all events were processed.
