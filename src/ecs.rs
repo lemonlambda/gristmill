@@ -26,6 +26,7 @@ use crate::{
 pub mod events;
 pub mod order_up;
 pub mod ordering;
+pub mod partial_manager;
 
 pub type System = fn(&World) -> Result<()>;
 pub type EventSystem = fn(&World, LemgineEventData) -> Result<()>;
@@ -51,6 +52,44 @@ impl Manager {
             winit_event_systems: SystemOrder::empty(),
             event_systems: HashMap::new(),
         })
+    }
+
+    pub fn integrate(mut self, partial: PartialManager) -> Result<Self> {
+        self.systems.extend_mut_ref(partial.systems);
+
+        self.winit_event_systems
+            .extend_mut_ref(partial.winit_event_systems);
+
+        for (event, system) in partial.event_systems {
+            // self.event_systems.
+            if let Some(value) = self.event_systems.get_mut(&event) {
+                value.extend_mut_ref(system);
+            } else {
+                self.event_systems.insert(event, system);
+            }
+        }
+
+        for (id, value) in partial.resources {
+            match self.world.resources.contains_key(&id) {
+                true => {
+                    return Err(anyhow!(
+                        "Resource from PartialManager's world exists in world already."
+                    ));
+                }
+                false => {
+                    self.world.resources.insert(id, value);
+                }
+            }
+        }
+        for (id, value) in partial.components {
+            if let Some(entry) = self.world.components.get_mut(&id) {
+                entry.extend_from_slice(&value);
+            } else {
+                self.world.components.insert(id, value);
+            }
+        }
+
+        Ok(self)
     }
 
     pub fn add_startup_systems<S: Into<SystemOrder<System>>>(mut self, systems: S) -> Self {
@@ -114,6 +153,16 @@ impl Manager {
         events.clear();
 
         Ok(())
+    }
+
+    pub fn add_resource<T: Any>(mut self, resource: T) -> Self {
+        self.world.add_resource(resource);
+        self
+    }
+
+    pub fn add_component<T: Any>(mut self, component: T) -> Self {
+        self.world.add_component(component);
+        self
     }
 
     pub fn run(mut self) -> Result<()> {
