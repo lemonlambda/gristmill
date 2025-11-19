@@ -1,6 +1,7 @@
 //! Hell where Entities and Components and Systems live
 
 use anyhow::{Result, anyhow};
+use log::*;
 use std::{
     any::{Any, TypeId},
     collections::HashMap,

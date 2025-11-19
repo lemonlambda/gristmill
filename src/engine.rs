@@ -54,11 +54,6 @@ pub fn engine_main(
                     engine.vulkan_app.resized = true;
                 }
             }
-            WindowEvent::KeyboardInput {
-                device_id: _,
-                event: _,
-                is_synthetic: _,
-            } => {}
             // Destroy our Vulkan app.
             WindowEvent::CloseRequested => {
                 elwt.exit();
