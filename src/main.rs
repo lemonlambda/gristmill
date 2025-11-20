@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use crate::ecs::order_up::OrderUp;
 use crate::ecs::{Manager, System, WinitEventSystem, World};
-use crate::engine::engine_main;
+use crate::engine::{engine_main, engine_partial};
 use crate::logging::setup_logging;
 use crate::systems::movement::movement_partial;
 use anyhow::Result;
@@ -21,7 +21,7 @@ fn main() -> Result<()> {
     setup_logging();
 
     let manager = Manager::new()?
-        .add_winit_event_systems((engine_main as WinitEventSystem,).order_up())
+        .integrate(engine_partial())?
         .add_systems((update_delta_time as System,).order_up())
         .add_resource(DeltaTime(0.0))
         .add_resource(LastTime(Instant::now()))
