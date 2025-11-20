@@ -1,10 +1,7 @@
 use crate::ecs::ordering::SystemOrder;
-use crate::ecs::{EventSystem, Manager, System, WinitEvent, WinitEventSystem, World};
+use crate::ecs::{EventSystem, System, WinitEventSystem};
 
-use anyhow::Result;
-use paste::paste;
 use seq_macro::seq;
-use winit::event_loop::EventLoopWindowTarget;
 
 pub trait OrderUp<S> {
     fn order_up(self) -> SystemOrder<S>;

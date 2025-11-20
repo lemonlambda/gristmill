@@ -1,6 +1,5 @@
 use std::any::Any;
 use std::hash::{Hash, Hasher};
-use std::mem::transmute;
 
 pub type LemgineEvent = Box<dyn EventWrapper>;
 pub type LemgineEventData = Box<dyn EventDataWrapper>;

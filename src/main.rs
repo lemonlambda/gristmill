@@ -5,8 +5,7 @@ extern crate pretty_env_logger;
 use std::time::Instant;
 
 use crate::ecs::order_up::OrderUp;
-use crate::ecs::ordering::{Ordering, SystemOrder};
-use crate::ecs::{EventSystem, Manager, System, WinitEventSystem, World};
+use crate::ecs::{Manager, System, WinitEventSystem, World};
 use crate::engine::engine_main;
 use crate::logging::setup_logging;
 use crate::systems::movement::movement_partial;
