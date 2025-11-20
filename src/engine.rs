@@ -12,7 +12,7 @@ mod vertex;
 mod vulkan;
 
 pub struct Engine {
-    vulkan_app: VulkanApp,
+    pub vulkan_app: VulkanApp,
     minimized: bool,
 }
 

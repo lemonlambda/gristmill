@@ -1,3 +1,5 @@
+use std::f32::consts::SQRT_2;
+
 use anyhow::Result;
 use log::*;
 use winit::{
@@ -6,20 +8,17 @@ use winit::{
     keyboard::{KeyCode, PhysicalKey},
 };
 
-use crate::ecs::{
-    EventSystem, WinitEventSystem, World,
-    events::{EcsEvent, EcsEventData, LemgineEventData},
-    order_up::OrderUp,
-    ordering::SystemOrder,
-    partial_manager::PartialManager,
+use crate::{
+    DeltaTime,
+    ecs::{
+        EventSystem, System, WinitEventSystem, World,
+        events::{EcsEvent, EcsEventData, LemgineEventData},
+        order_up::OrderUp,
+        ordering::SystemOrder,
+        partial_manager::PartialManager,
+    },
+    engine::Engine,
 };
-
-#[derive(Clone, Hash, Eq, PartialEq)]
-pub enum MovementEvent {
-    Moved,
-}
-
-impl EcsEvent for MovementEvent {}
 
 #[derive(Clone)]
 pub struct MovementData {
@@ -27,33 +26,64 @@ pub struct MovementData {
     down: bool,
     left: bool,
     right: bool,
+    pressed: bool,
 }
 
-impl EcsEventData for MovementData {}
+impl MovementData {
+    fn diagonal(&self) -> bool {
+        ((self.up || self.down) && (self.left || self.right))
+            && (!self.up || !self.down || (!self.left || !self.right))
+    }
+}
 
 pub fn movement_partial() -> PartialManager {
     PartialManager::new()
         .add_winit_event_systems((get_movement as WinitEventSystem,).order_up())
-        .add_event_handler(
-            MovementEvent::Moved,
-            (handle_movement as EventSystem,).order_up(),
-        )
+        .add_systems((update_movement as System,).order_up())
+        .add_resource(MovementData {
+            up: false,
+            down: false,
+            left: false,
+            right: false,
+            pressed: false,
+        })
 }
 
-pub fn handle_movement(_world: &World, _event_data: LemgineEventData) -> Result<()> {
-    info!("Got some movement here!");
+pub fn update_movement(world: &World) -> Result<()> {
+    let movement_data_resource = world.get_resource::<MovementData>();
+    let mut engine_resource = world.get_resource_mut::<Engine>();
+
+    let delta_time = world.get_resource::<DeltaTime>().0;
+
+    let mut value = 1.0;
+
+    if movement_data_resource.diagonal() {
+        value = 1.0 / SQRT_2;
+    }
+
+    if movement_data_resource.up {
+        engine_resource.vulkan_app.camera_position[1] -= value * delta_time;
+    }
+    if movement_data_resource.down {
+        engine_resource.vulkan_app.camera_position[1] += value * delta_time;
+    }
+    if movement_data_resource.left {
+        engine_resource.vulkan_app.camera_position[0] += value * delta_time;
+    }
+    if movement_data_resource.right {
+        engine_resource.vulkan_app.camera_position[0] -= value * delta_time;
+    }
+
+    info!(
+        "Camera Position: {:?}",
+        engine_resource.vulkan_app.camera_position
+    );
 
     Ok(())
 }
 
 pub fn get_movement(world: &World, event: Event<()>, _: &EventLoopWindowTarget<()>) -> Result<()> {
-    let mut movement_data = MovementData {
-        up: false,
-        down: false,
-        left: false,
-        right: false,
-    };
-    let mut changed = false;
+    let mut movement_data = world.get_resource_mut::<MovementData>();
 
     if let Event::WindowEvent {
         window_id: _,
@@ -68,27 +98,19 @@ pub fn get_movement(world: &World, event: Event<()>, _: &EventLoopWindowTarget<(
     {
         match code {
             KeyCode::KeyA => {
-                movement_data.left = true;
-                changed = true;
+                movement_data.left = event.state.is_pressed();
             }
             KeyCode::KeyD => {
-                movement_data.right = true;
-                changed = true;
+                movement_data.right = event.state.is_pressed();
             }
             KeyCode::KeyW => {
-                movement_data.up = true;
-                changed = true;
+                movement_data.up = event.state.is_pressed();
             }
             KeyCode::KeyS => {
-                movement_data.down = true;
-                changed = true;
+                movement_data.down = event.state.is_pressed();
             }
             _ => {}
         }
-    }
-
-    if changed {
-        world.raise_event(MovementEvent::Moved, movement_data);
     }
 
     Ok(())
