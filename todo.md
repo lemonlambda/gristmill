@@ -15,3 +15,7 @@
 - [x] System chaining trait
 - [x] System order concat
 - [x] Partial Manager
+- [ ] Mass documentation bender
+- [ ] Partial Manager and Normal Manager should share a System Add trait
+- [ ] Partial Manager and World should share an Add World trait
+- [ ] Actually use draw data when rendering
