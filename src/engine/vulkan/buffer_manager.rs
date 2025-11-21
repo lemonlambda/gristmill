@@ -327,55 +327,7 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
         usage: BufferUsageFlags,
         properties: MemoryPropertyFlags,
     ) -> Result<()> {
-        let buffer_pair = BufferPair::allocate::<B>(
-            &self.instance(),
-            &self.device(),
-            self.physical_device,
-            usage,
-            properties,
-        )?;
-
-        match buffer_type {
-            AllocateBufferType::Temp => {
-                unsafe { self.free_temp_buffer() }; // Make sure no temp buffer exists already
-                self.temp_buffer = Some(buffer_pair);
-            }
-            AllocateBufferType::Standard { name } => {
-                let device = self.device();
-
-                self.buffers
-                    .entry(name)
-                    .and_modify(|b| {
-                        unsafe { b.free(&device) }; // Ensure the buffer doesn't exist if it's getting replaced
-                        *b = buffer_pair;
-                    })
-                    .or_insert(buffer_pair);
-            }
-            AllocateBufferType::Uniform { name } => {
-                self.uniform_buffers
-                    .entry(name)
-                    .and_modify(|v| v.push(buffer_pair))
-                    .or_insert(vec![buffer_pair]);
-            }
-        };
-
-        // Debug info for validation
-        if VALIDATION_ENABLED {
-            unsafe {
-                self.instance().set_debug_utils_object_name_ext(
-                    self.device().handle(),
-                    &DebugUtilsObjectNameInfoEXT {
-                        s_type: StructureType::DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
-                        next: std::ptr::null(),
-                        object_type: ObjectType::BUFFER,
-                        object_handle: buffer_pair.buffer.as_raw(),
-                        object_name: CString::new("TempBuffer").unwrap().as_ptr(),
-                    },
-                )?
-            };
-        }
-
-        Ok(())
+        unsafe { self.allocate_buffer_with_size(buffer_type, usage, properties, size_of::<B>()) }
     }
 
     pub fn get_uniform_buffers(&self, name: U) -> &Vec<BufferPair> {
