@@ -1,5 +1,5 @@
 use crate::ecs::ordering::SystemOrder;
-use crate::ecs::{EventSystem, System, WinitEventSystem};
+use crate::ecs::{EventSystem, StartupSystem, System, WinitEventSystem};
 
 use seq_macro::seq;
 
@@ -59,3 +59,13 @@ gen_order_up_impl!(5, System);
 gen_order_up_impl!(6, System);
 gen_order_up_impl!(7, System);
 gen_order_up_impl!(8, System);
+
+gen_order_up_impl!(0, StartupSystem);
+gen_order_up_impl!(1, StartupSystem);
+gen_order_up_impl!(2, StartupSystem);
+gen_order_up_impl!(3, StartupSystem);
+gen_order_up_impl!(4, StartupSystem);
+gen_order_up_impl!(5, StartupSystem);
+gen_order_up_impl!(6, StartupSystem);
+gen_order_up_impl!(7, StartupSystem);
+gen_order_up_impl!(8, StartupSystem);

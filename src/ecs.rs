@@ -2,7 +2,7 @@
 
 use anyhow::{Result, anyhow};
 use std::{
-    any::{Any, TypeId},
+    any::{Any, TypeId, type_name},
     collections::HashMap,
     mem::transmute,
     rc::Rc,
@@ -28,6 +28,7 @@ pub mod order_up;
 pub mod ordering;
 pub mod partial_manager;
 
+pub type StartupSystem = fn(&mut World, &EventLoop<()>) -> Result<()>;
 pub type System = fn(&World) -> Result<()>;
 pub type EventSystem = fn(&World, LemgineEventData) -> Result<()>;
 pub type WinitEventSystem = fn(&World, WinitEvent, &EventLoopWindowTarget<()>) -> Result<()>;
@@ -35,7 +36,7 @@ pub type WinitEventSystem = fn(&World, WinitEvent, &EventLoopWindowTarget<()>) -
 /// Should manage everything related to the ECS
 pub struct Manager {
     pub world: World,
-    pub startup_systems: SystemOrder<System>,
+    pub startup_systems: SystemOrder<StartupSystem>,
     pub systems: SystemOrder<System>,
     pub winit_event_systems: SystemOrder<WinitEventSystem>,
     pub event_systems: HashMap<LemgineEvent, SystemOrder<EventSystem>>,
@@ -55,6 +56,7 @@ impl Manager {
     }
 
     pub fn integrate(mut self, partial: PartialManager) -> Result<Self> {
+        self.startup_systems.extend_mut_ref(partial.startup_systems);
         self.systems.extend_mut_ref(partial.systems);
 
         self.winit_event_systems
@@ -92,7 +94,7 @@ impl Manager {
         Ok(self)
     }
 
-    pub fn add_startup_systems<S: Into<SystemOrder<System>>>(mut self, systems: S) -> Self {
+    pub fn add_startup_systems<S: Into<SystemOrder<StartupSystem>>>(mut self, systems: S) -> Self {
         self.startup_systems = systems.into();
         self
     }
@@ -167,11 +169,9 @@ impl Manager {
 
     pub fn run(mut self) -> Result<()> {
         let event_loop = EventLoop::new()?;
-        let engine = Engine::new(&event_loop).unwrap();
-        self.world.add_resource(engine);
 
         for system in self.startup_systems.order.iter() {
-            system(&self.world)?;
+            system(&mut self.world, &event_loop)?;
         }
 
         event_loop.run(move |event, elwt| {
@@ -228,7 +228,10 @@ impl World {
     }
 
     pub fn get_resource_mut<T: Any>(&self) -> MappedRwLockWriteGuard<'_, Box<T>> {
-        self.try_get_resource_mut::<T>().unwrap()
+        match self.try_get_resource_mut::<T>() {
+            Some(val) => val,
+            None => panic!("{} resource doesn't exist.", type_name::<T>()),
+        }
     }
 
     pub fn try_get_resource_mut<T: Any>(&self) -> Option<MappedRwLockWriteGuard<'_, Box<T>>> {
