@@ -8,10 +8,12 @@ use winit::window::WindowBuilder;
 use winit::{dpi::LogicalSize, event_loop::EventLoop};
 
 use crate::ecs::order_up::OrderUp;
-use crate::ecs::{WinitEventSystem, World};
+use crate::ecs::{StartupSystem, WinitEventSystem, World};
+use crate::engine::gui::GuiApp;
 use crate::engine::vulkan::VulkanApp;
 use crate::systems::prelude::PartialManager;
 
+mod gui;
 mod vertex;
 mod vulkan;
 
@@ -41,9 +43,18 @@ pub struct FPSCounter(u32);
 
 pub fn engine_partial() -> PartialManager {
     PartialManager::new()
+        .add_startup_systems((engine_startup as StartupSystem,).order_up())
         .add_winit_event_systems((engine_main as WinitEventSystem,).order_up())
-        .add_resource(RedrawTime(Instant::now()))
-        .add_resource(FPSCounter(0))
+}
+
+pub fn engine_startup(world: &mut World, event_loop: &EventLoop<()>) -> Result<()> {
+    let engine = Engine::new(event_loop)?;
+
+    world.add_resource(RedrawTime(Instant::now()));
+    world.add_resource(FPSCounter(0));
+    world.add_resource(engine);
+
+    Ok(())
 }
 
 pub fn engine_main(
@@ -51,6 +62,24 @@ pub fn engine_main(
     event: Event<()>,
     elwt: &EventLoopWindowTarget<()>,
 ) -> Result<()> {
+    let redraw_time = world.try_get_resource_mut::<RedrawTime>();
+
+    if redraw_time.is_none() {
+        warn!("Redraw Time is none.");
+        return Ok(());
+    }
+
+    let mut redraw_time = redraw_time.unwrap();
+
+    let fps_counter = world.try_get_resource_mut::<FPSCounter>();
+
+    if fps_counter.is_none() {
+        warn!("FPS Counter is none.");
+        return Ok(());
+    }
+
+    let mut fps_counter = fps_counter.unwrap();
+
     let engine = world.try_get_resource_mut::<Engine>();
 
     if engine.is_none() {
@@ -59,15 +88,14 @@ pub fn engine_main(
     }
 
     let mut engine = engine.unwrap();
-    let mut redraw_time = world.get_resource_mut::<RedrawTime>();
-    let mut fps_counter = world.get_resource_mut::<FPSCounter>();
 
-    fps_counter += 1;
-    info!("FPS: {}", fps_counter.0);
+    fps_counter.0 += 1;
 
     match event {
         // Request a redraw when all events were processed.
-        Event::AboutToWait => engine.vulkan_app.window.request_redraw(),
+        Event::AboutToWait => {
+            engine.vulkan_app.window.request_redraw();
+        }
         Event::WindowEvent { event, .. } => match event {
             // Render a frame if our Vulkan app is not being destroyed.
             WindowEvent::RedrawRequested
@@ -75,7 +103,10 @@ pub fn engine_main(
                     && !engine.minimized
                     && redraw_time.0.elapsed().as_nanos() > DT_FPS_60_NANO =>
             unsafe {
+                info!("FPS: {}", fps_counter.0);
+
                 engine.vulkan_app.render().unwrap();
+
                 redraw_time.0 = Instant::now();
                 fps_counter.0 = 0;
             },
