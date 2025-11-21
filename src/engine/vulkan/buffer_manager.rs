@@ -16,6 +16,8 @@ pub enum StandardBufferMaps {
     #[default]
     Vertices,
     Indices,
+    ImguiVertices(usize),
+    ImguiIndices(usize),
 }
 
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq, Hash)]
@@ -39,6 +41,10 @@ impl Display for StandardBufferMaps {
         match self {
             StandardBufferMaps::Vertices => f.write_str("StandardBufferMaps::Vertices"),
             StandardBufferMaps::Indices => f.write_str("StandardBufferMaps::Indices"),
+            StandardBufferMaps::ImguiVertices(_) => {
+                f.write_str("StandardBufferMaps::ImguiVertices")
+            }
+            StandardBufferMaps::ImguiIndices(_) => f.write_str("StandardBufferMaps::ImguiIndices"),
         }
     }
 }
@@ -91,6 +97,12 @@ impl<'a, T, S, U> PartialEq<BufferManagerCopyType<S, U>> for BufferManagerDataTy
             )
         )
     }
+}
+
+pub enum AllocateBufferType<S, U> {
+    Temp,
+    Standard { name: S },
+    Uniform { name: U },
 }
 
 #[derive(Clone, Default, Debug)]
@@ -250,21 +262,45 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
         Ok(())
     }
 
-    /// Frees the previous temp buffer if it exists
-    pub unsafe fn allocate_temp_buffer<B>(
+    pub unsafe fn allocate_buffer_with_size(
         &mut self,
+        buffer_type: AllocateBufferType<S, U>,
         usage: BufferUsageFlags,
         properties: MemoryPropertyFlags,
+        size: u64,
     ) -> Result<()> {
-        unsafe { self.free_temp_buffer() }; // Make sure no temp buffer exists already
-
-        self.temp_buffer = Some(BufferPair::allocate::<B>(
+        let buffer_pair = BufferPair::allocate_with_size(
             &self.instance(),
             &self.device(),
             self.physical_device,
             usage,
             properties,
-        )?);
+            size,
+        )?;
+
+        match buffer_type {
+            AllocateBufferType::Temp => {
+                unsafe { self.free_temp_buffer() }; // Make sure no temp buffer exists already
+                self.temp_buffer = Some(buffer_pair);
+            }
+            AllocateBufferType::Standard { name } => {
+                let device = self.device();
+
+                self.buffers
+                    .entry(name)
+                    .and_modify(|b| {
+                        unsafe { b.free(&device) }; // Ensure the buffer doesn't exist if it's getting replaced
+                        *b = buffer_pair;
+                    })
+                    .or_insert(buffer_pair);
+            }
+            AllocateBufferType::Uniform { name } => {
+                self.uniform_buffers
+                    .entry(name)
+                    .and_modify(|v| v.push(buffer_pair))
+                    .or_insert(vec![buffer_pair]);
+            }
+        };
 
         // Debug info for validation
         if VALIDATION_ENABLED {
@@ -275,7 +311,7 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
                         s_type: StructureType::DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
                         next: std::ptr::null(),
                         object_type: ObjectType::BUFFER,
-                        object_handle: self.temp_buffer.unwrap().buffer.as_raw(),
+                        object_handle: buffer_pair.buffer.as_raw(),
                         object_name: CString::new("TempBuffer").unwrap().as_ptr(),
                     },
                 )?
@@ -285,18 +321,73 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
         Ok(())
     }
 
-    pub unsafe fn free_temp_buffer(&mut self) {
-        if self.temp_buffer.is_none() {
-            return;
+    pub unsafe fn allocate_buffer<B>(
+        &mut self,
+        buffer_type: AllocateBufferType<S, U>,
+        usage: BufferUsageFlags,
+        properties: MemoryPropertyFlags,
+    ) -> Result<()> {
+        let buffer_pair = BufferPair::allocate::<B>(
+            &self.instance(),
+            &self.device(),
+            self.physical_device,
+            usage,
+            properties,
+        )?;
+
+        match buffer_type {
+            AllocateBufferType::Temp => {
+                unsafe { self.free_temp_buffer() }; // Make sure no temp buffer exists already
+                self.temp_buffer = Some(buffer_pair);
+            }
+            AllocateBufferType::Standard { name } => {
+                let device = self.device();
+
+                self.buffers
+                    .entry(name)
+                    .and_modify(|b| {
+                        unsafe { b.free(&device) }; // Ensure the buffer doesn't exist if it's getting replaced
+                        *b = buffer_pair;
+                    })
+                    .or_insert(buffer_pair);
+            }
+            AllocateBufferType::Uniform { name } => {
+                self.uniform_buffers
+                    .entry(name)
+                    .and_modify(|v| v.push(buffer_pair))
+                    .or_insert(vec![buffer_pair]);
+            }
+        };
+
+        // Debug info for validation
+        if VALIDATION_ENABLED {
+            unsafe {
+                self.instance().set_debug_utils_object_name_ext(
+                    self.device().handle(),
+                    &DebugUtilsObjectNameInfoEXT {
+                        s_type: StructureType::DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+                        next: std::ptr::null(),
+                        object_type: ObjectType::BUFFER,
+                        object_handle: buffer_pair.buffer.as_raw(),
+                        object_name: CString::new("TempBuffer").unwrap().as_ptr(),
+                    },
+                )?
+            };
         }
 
-        unsafe { self.temp_buffer.unwrap().free(&self.device()) };
-
-        self.temp_buffer = None;
+        Ok(())
     }
 
     pub fn get_uniform_buffers(&self, name: U) -> &Vec<BufferPair> {
         self.uniform_buffers.get(&name).unwrap()
+    }
+
+    pub fn get_standard_buffer(&mut self, name: S) -> &BufferPair {
+        self.buffers.get(&name).unwrap()
+    }
+
+    pub fn setup_uniform_buffer(&mut self, name: U) {
+        self.uniform_buffers.entry(name).or_insert(vec![]);
     }
 
     pub unsafe fn create_buffer_descriptor_set<'a, UBO>(
@@ -332,95 +423,6 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
         descriptors
     }
 
-    pub unsafe fn allocate_new_standard_buffer<B>(
-        &mut self,
-        name: S,
-        usage: BufferUsageFlags,
-        properties: MemoryPropertyFlags,
-    ) -> Result<()> {
-        let buffer_pair = BufferPair::allocate::<B>(
-            &self.instance(),
-            &self.device(),
-            self.physical_device,
-            usage,
-            properties,
-        )?;
-
-        // Debug info for validation
-        if VALIDATION_ENABLED {
-            unsafe {
-                self.instance().set_debug_utils_object_name_ext(
-                    self.device().handle(),
-                    &DebugUtilsObjectNameInfoEXT {
-                        s_type: StructureType::DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
-                        next: std::ptr::null(),
-                        object_type: ObjectType::BUFFER,
-                        object_handle: buffer_pair.buffer.as_raw(),
-                        object_name: CString::new(format!("{name}")).unwrap().as_ptr(),
-                    },
-                )?
-            };
-        }
-
-        let device = self.device();
-
-        self.buffers
-            .entry(name)
-            .and_modify(|b| {
-                unsafe { b.free(&device) }; // Ensure the buffer doesn't exist if it's getting replaced
-                *b = buffer_pair;
-            })
-            .or_insert(buffer_pair);
-
-        Ok(())
-    }
-
-    pub fn get_standard_buffer(&mut self, name: S) -> &BufferPair {
-        self.buffers.get(&name).unwrap()
-    }
-
-    pub fn setup_uniform_buffer(&mut self, name: U) {
-        self.uniform_buffers.entry(name).or_insert(vec![]);
-    }
-
-    pub unsafe fn allocate_new_uniform_buffer<B>(
-        &mut self,
-        name: U,
-        usage: BufferUsageFlags,
-        properties: MemoryPropertyFlags,
-    ) -> Result<()> {
-        let buffer_pair = BufferPair::allocate::<B>(
-            &self.instance(),
-            &self.device(),
-            self.physical_device,
-            usage,
-            properties,
-        )?;
-
-        // Debug info for validation
-        if VALIDATION_ENABLED {
-            unsafe {
-                self.instance().set_debug_utils_object_name_ext(
-                    self.device().handle(),
-                    &DebugUtilsObjectNameInfoEXT {
-                        s_type: StructureType::DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
-                        next: std::ptr::null(),
-                        object_type: ObjectType::BUFFER,
-                        object_handle: buffer_pair.buffer.as_raw(),
-                        object_name: CString::new(format!("{name}")).unwrap().as_ptr(),
-                    },
-                )?
-            };
-        }
-
-        self.uniform_buffers
-            .entry(name)
-            .and_modify(|v| v.push(buffer_pair))
-            .or_insert(vec![buffer_pair]);
-
-        Ok(())
-    }
-
     pub unsafe fn create_descriptor_set_layout<'a>(
         &mut self,
         additional_descriptors: Option<Vec<DescriptorSetLayoutBindingBuilder<'a>>>,
@@ -439,6 +441,16 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
 
         let info = DescriptorSetLayoutCreateInfo::builder().bindings(&bindings);
         unsafe { Ok(self.device().create_descriptor_set_layout(&info, None)?) }
+    }
+
+    pub unsafe fn free_temp_buffer(&mut self) {
+        if self.temp_buffer.is_none() {
+            return;
+        }
+
+        unsafe { self.temp_buffer.unwrap().free(&self.device()) };
+
+        self.temp_buffer = None;
     }
 
     pub unsafe fn free_standard_buffer(&mut self, name: S) {
@@ -473,6 +485,39 @@ pub struct BufferPair {
 impl BufferPair {
     pub fn new(buffer: Buffer, memory: DeviceMemory) -> Self {
         Self { buffer, memory }
+    }
+
+    pub fn allocate_with_size(
+        instance: &Instance,
+        device: &Device,
+        physical_device: PhysicalDevice,
+        usage: BufferUsageFlags,
+        properties: MemoryPropertyFlags,
+        size: u64,
+    ) -> Result<Self> {
+        let buffer_info = BufferCreateInfo::builder()
+            .size(size)
+            .usage(usage)
+            .sharing_mode(SharingMode::EXCLUSIVE);
+
+        let buffer = unsafe { device.create_buffer(&buffer_info, None) }?;
+
+        let requirements = unsafe { device.get_buffer_memory_requirements(buffer) };
+
+        let memory_info = MemoryAllocateInfo::builder()
+            .allocation_size(requirements.size)
+            .memory_type_index(unsafe {
+                get_memory_type_index(instance, physical_device, properties, requirements)
+            }?);
+
+        let buffer_memory = unsafe { device.allocate_memory(&memory_info, None) }?;
+
+        (unsafe { device.bind_buffer_memory(buffer, buffer_memory, 0) })?;
+
+        Ok(Self {
+            buffer,
+            memory: buffer_memory,
+        })
     }
 
     pub fn allocate<S>(
