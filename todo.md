@@ -16,6 +16,26 @@
 - [x] System order concat
 - [x] Partial Manager
 - [ ] Mass documentation bender
+    - [ ] ecs
+        - [x] events
+        - [x] ordering
+        - [x] order_up
+        - [x] partial_manager
+    - [ ] engine
+        - [ ] gui
+        - [ ] vertex
+        - [ ] vulkan
+            - [ ] buffer_manager
+            - [ ] shared_helpers
+    - [ ] systems
+        - [ ] movement
+        - [ ] prelude
+    - [ ] engine
+    - [ ] init
+    - [ ] logging
+    - [ ] main
 - [ ] Partial Manager and Normal Manager should share a System Add trait
+    - [ ] Change references of `Manager` in doc comments to `SystemAdd` trait
+    - [ ] Deduplicate the Partial Manager and Normal Manager docs
 - [ ] Partial Manager and World should share an Add World trait
 - [ ] Actually use draw data when rendering

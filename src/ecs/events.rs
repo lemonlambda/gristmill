@@ -4,19 +4,34 @@ use std::hash::{Hash, Hasher};
 pub type LemgineEvent = Box<dyn EventWrapper>;
 pub type LemgineEventData = Box<dyn EventDataWrapper>;
 
+/// Type to denote what's an ECS Event
 pub trait EcsEvent {}
+
+/// Type to denote what's an ECS Event's Data
 pub trait EcsEventData {}
 
+/// This type is to wrap the [`EcsEventData`] to provide it with certain capabilities.
+/// These capabilities aren't possible without this wrapper type.
+///
+/// These capabilities are required by [`Manager`].
 pub trait EventDataWrapper: Any {
+    /// Wrapper for `clone` on a [`Box<EcsEventData>`]
     fn clone_box(&self) -> Box<dyn EventDataWrapper>;
+
+    /// Convert to `&dyn Any`
     fn as_any(&self) -> &dyn Any;
+
+    /// Convert to `&mut dyn Any`
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 impl dyn EventDataWrapper {
+    /// Downcast to ref a the specified type.
     pub fn downcast_ref<T: Any>(&self) -> Option<&T> {
         self.as_any().downcast_ref::<T>()
     }
+
+    /// Downcast to a mut ref of the specified type.
     pub fn downcast_mut<T: Any>(&mut self) -> Option<&mut T> {
         self.as_any_mut().downcast_mut::<T>()
     }
@@ -43,11 +58,21 @@ impl Clone for Box<dyn EventDataWrapper> {
     }
 }
 
+/// Wrapper over [`EcsEvent`] to get additional functionality.
+/// This functionality isn't possible without this wrapper.
+///
+/// These capabilities are required by [`Manager`].
 pub trait EventWrapper: EcsEvent {
+    /// Convert to `&dyn Any`.
     fn as_any(&self) -> &dyn Any;
 
+    /// Wrapper for `eq` function.
     fn eq_dyn(&self, other: &dyn EventWrapper) -> bool;
+
+    /// Wrapper for hashing the type.
     fn hash_dyn(&self, state: &mut dyn Hasher);
+
+    /// Wrapper for cloning
     fn clone_box(&self) -> Box<dyn EventWrapper>;
 }
 
