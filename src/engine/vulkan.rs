@@ -19,15 +19,15 @@ use vulkanalia::{
 use winit::window::Window;
 
 use crate::engine::{
+    gui::GuiApp,
     vertex::{INDICES, Mat4, SporadicBufferObject, UniformBufferObject, VERTICES, Vertex},
     vulkan::{
         buffer_manager::{
-            BufferManager, BufferManagerCopyType, BufferManagerDataType, StandardBufferMaps,
-            UniformBufferMaps,
+            AllocateBufferType, BufferManager, BufferManagerCopyType, BufferManagerDataType,
+            StandardBufferMaps, UniformBufferMaps,
         },
         shared_helpers::{
-            begin_single_time_commands, end_single_time_commands,
-            get_memory_type_index,
+            begin_single_time_commands, end_single_time_commands, get_memory_type_index,
         },
     },
 };
@@ -84,6 +84,7 @@ pub struct VulkanApp {
     start: Instant,
     pub camera_position: [f32; 2],
     pub window: Window,
+    pub gui: GuiApp,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -158,6 +159,9 @@ impl VulkanApp {
                 Self::create_sync_objects(&device, &mut data)?;
                 info!("Woo created everything, hard work ain't it?");
             }
+
+            let gui = GuiApp::new(&window);
+
             Ok(Self {
                 entry,
                 instance,
@@ -168,8 +172,110 @@ impl VulkanApp {
                 start: Instant::now(),
                 camera_position: [0.0, 0.0],
                 window,
+                gui,
             })
         }
+    }
+
+    pub unsafe fn create_imgui_buffers(
+        data: &mut VulkanData,
+        window: &Window,
+        gui: &mut GuiApp,
+    ) -> Result<()> {
+        let vertices = gui.render(window)?;
+        for (i, (vertices, indices)) in vertices.into_iter().enumerate() {
+            unsafe {
+                Self::create_imgui_vertex_buffer(data, vertices, i)?;
+                Self::create_imgui_index_buffer(data, indices, i)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub unsafe fn create_imgui_vertex_buffer(
+        data: &mut VulkanData,
+        vertices: Vec<Vertex>,
+        idx: usize,
+    ) -> Result<()> {
+        unsafe {
+            let vertex_buffer_size = (size_of::<Vertex>()  * vertices.len()) as u64;
+
+            data.buffer_manager.allocate_buffer_with_size(
+                AllocateBufferType::Temp,
+                BufferUsageFlags::TRANSFER_SRC,
+                MemoryPropertyFlags::HOST_COHERENT | MemoryPropertyFlags::HOST_VISIBLE,
+                vertex_buffer_size
+            )?;
+
+            data.buffer_manager.copy_data_to_buffer(
+                BufferManagerDataType::Data(&VERTICES),
+                BufferManagerCopyType::TempBuffer,
+            )?;
+
+            data.buffer_manager.allocate_buffer_with_size(
+                AllocateBufferType::Standard {
+                    name: StandardBufferMaps::Vertices,
+                },
+                BufferUsageFlags::VERTEX_BUFFER | BufferUsageFlags::TRANSFER_DST,
+                MemoryPropertyFlags::DEVICE_LOCAL,
+                vertex_buffer_size
+            )?;
+
+            data.buffer_manager
+                .copy_data_to_buffer::<Vertex>(
+                    BufferManagerDataType::TempBuffer {
+                        graphics_queue: data.graphics_queue,
+                        command_pool: data.command_pool,
+                    },
+                    BufferManagerCopyType::StandardBuffer(StandardBufferMaps::Vertices),
+                )?;
+
+            data.buffer_manager.free_temp_buffer()
+        };
+
+        Ok(())
+    }
+
+    pub unsafe fn create_imgui_index_buffer(
+        data: &mut VulkanData,
+        indices: Vec<u16>,
+        idx: usize,
+    ) -> Result<()> {
+        unsafe {
+            type IndexBufferSize = [u16; INDICES.len()];
+
+            data.buffer_manager
+                .allocate_buffer::<IndexBufferSize>(
+                    AllocateBufferType::Temp
+                    BufferUsageFlags::TRANSFER_SRC,
+                    MemoryPropertyFlags::HOST_COHERENT | MemoryPropertyFlags::HOST_VISIBLE,
+                )?;
+
+            data.buffer_manager.copy_data_to_buffer(
+                BufferManagerDataType::Data(INDICES),
+                BufferManagerCopyType::TempBuffer,
+            )?;
+
+            data.buffer_manager
+                .allocate_buffer::<IndexBufferSize>(
+                    AllocateBufferType::Standard { name: StandardBufferMaps::Indices },
+                    BufferUsageFlags::INDEX_BUFFER | BufferUsageFlags::TRANSFER_DST,
+                    MemoryPropertyFlags::DEVICE_LOCAL,
+                )?;
+
+            data.buffer_manager.copy_data_to_buffer::<IndexBufferSize>(
+                BufferManagerDataType::TempBuffer {
+                    graphics_queue: data.graphics_queue,
+                    command_pool: data.command_pool,
+                },
+                BufferManagerCopyType::StandardBuffer(StandardBufferMaps::Indices),
+            )?;
+
+            data.buffer_manager.free_temp_buffer()
+        };
+
+        Ok(())
     }
 
     pub unsafe fn render(&mut self) -> Result<()> {
@@ -1203,7 +1309,11 @@ impl VulkanApp {
         Ok(())
     }
 
-    unsafe fn create_command_buffers(device: &Device, data: &mut VulkanData) -> Result<()> {
+    unsafe fn create_command_buffers(
+        device: &Device,
+        data: &mut VulkanData,
+        gui: &mut GuiApp,
+    ) -> Result<()> {
         let allocate_info = CommandBufferAllocateInfo::builder()
             .command_pool(data.command_pool)
             .level(CommandBufferLevel::PRIMARY)
@@ -1362,14 +1472,14 @@ impl VulkanApp {
         for _ in 0..data.swapchain_images.len() {
             unsafe {
                 data.buffer_manager
-                    .allocate_new_uniform_buffer::<UniformBufferObject>(
-                        UniformBufferMaps::ModelViewProject,
+                    .allocate_buffer::<UniformBufferObject>(
+                        AllocateBufferType::Uniform { name: UniformBufferMaps::ModelViewProject },
                         BufferUsageFlags::UNIFORM_BUFFER,
                         MemoryPropertyFlags::HOST_COHERENT | MemoryPropertyFlags::HOST_VISIBLE,
                     )?;
                 data.buffer_manager
-                    .allocate_new_uniform_buffer::<SporadicBufferObject>(
-                        UniformBufferMaps::SporadicBufferObject,
+                    .allocate_buffer::<SporadicBufferObject>(
+                        AllocateBufferType::Uniform { name: UniformBufferMaps::SporadicBufferObject },
                         BufferUsageFlags::UNIFORM_BUFFER,
                         MemoryPropertyFlags::HOST_COHERENT | MemoryPropertyFlags::HOST_VISIBLE,
                     )?;
@@ -1414,7 +1524,8 @@ impl VulkanApp {
             type VertexBufferSize = [Vertex; VERTICES.len()];
 
             data.buffer_manager
-                .allocate_temp_buffer::<VertexBufferSize>(
+                .allocate_buffer::<VertexBufferSize>(
+                    AllocateBufferType::Temp,
                     BufferUsageFlags::TRANSFER_SRC,
                     MemoryPropertyFlags::HOST_COHERENT | MemoryPropertyFlags::HOST_VISIBLE,
                 )?;
@@ -1425,8 +1536,8 @@ impl VulkanApp {
             )?;
 
             data.buffer_manager
-                .allocate_new_standard_buffer::<VertexBufferSize>(
-                    StandardBufferMaps::Vertices,
+                .allocate_buffer::<VertexBufferSize>(
+                    AllocateBufferType::Standard { name: StandardBufferMaps::Vertices},
                     BufferUsageFlags::VERTEX_BUFFER | BufferUsageFlags::TRANSFER_DST,
                     MemoryPropertyFlags::DEVICE_LOCAL,
                 )?;
@@ -1451,7 +1562,8 @@ impl VulkanApp {
             type IndexBufferSize = [u16; INDICES.len()];
 
             data.buffer_manager
-                .allocate_temp_buffer::<IndexBufferSize>(
+                .allocate_buffer::<IndexBufferSize>(
+                    AllocateBufferType::Temp,
                     BufferUsageFlags::TRANSFER_SRC,
                     MemoryPropertyFlags::HOST_COHERENT | MemoryPropertyFlags::HOST_VISIBLE,
                 )?;
@@ -1462,8 +1574,8 @@ impl VulkanApp {
             )?;
 
             data.buffer_manager
-                .allocate_new_standard_buffer::<IndexBufferSize>(
-                    StandardBufferMaps::Indices,
+                .allocate_buffer::<IndexBufferSize>(
+                    AllocateBufferType::Standard { name: StandardBufferMaps::Indices },
                     BufferUsageFlags::INDEX_BUFFER | BufferUsageFlags::TRANSFER_DST,
                     MemoryPropertyFlags::DEVICE_LOCAL,
                 )?;
