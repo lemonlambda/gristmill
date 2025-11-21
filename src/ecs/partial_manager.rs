@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::ecs::{
-    Component, EventSystem, Resource, System, WinitEventSystem,
+    Component, EventSystem, Resource, StartupSystem, System, WinitEventSystem,
     events::{EventWrapper, LemgineEvent},
     ordering::SystemOrder,
 };
@@ -14,7 +14,7 @@ use crate::ecs::{
 pub struct PartialManager {
     pub resources: HashMap<TypeId, Resource>,
     pub components: HashMap<TypeId, Vec<Component>>,
-    pub startup_systems: SystemOrder<System>,
+    pub startup_systems: SystemOrder<StartupSystem>,
     pub systems: SystemOrder<System>,
     pub winit_event_systems: SystemOrder<WinitEventSystem>,
     pub event_systems: HashMap<LemgineEvent, SystemOrder<EventSystem>>,
@@ -51,7 +51,7 @@ impl PartialManager {
         self
     }
 
-    pub fn add_startup_systems<S: Into<SystemOrder<System>>>(mut self, systems: S) -> Self {
+    pub fn add_startup_systems<S: Into<SystemOrder<StartupSystem>>>(mut self, systems: S) -> Self {
         self.startup_systems = systems.into();
         self
     }
