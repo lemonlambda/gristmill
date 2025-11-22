@@ -107,12 +107,29 @@ pub fn setup_logging() {
             {
                 let function_names = get_backtrace_functions();
                 let mut style = f.style();
-                let function_name = style.set_bold(true).value(
-                    function_names
-                        .get(2)
-                        .unwrap_or(function_names.last().unwrap_or(&"<unknown>".to_string()))
-                        .to_string(),
-                );
+                let function_name =
+                    style
+                        .set_bold(true)
+                        .value(if let Some(v) = function_names.get(2) {
+                            if v.contains("debug_callback") {
+                                function_names
+                                    .get(3)
+                                    .unwrap_or(
+                                        &function_names
+                                            .last()
+                                            .unwrap_or(&"<unknown>".to_string())
+                                            .to_string(),
+                                    )
+                                    .clone()
+                            } else {
+                                v.clone()
+                            }
+                        } else {
+                            function_names
+                                .last()
+                                .unwrap_or(&"<unknown>".to_string())
+                                .to_string()
+                        });
 
                 writeln!(f, "[{}] {} ~ {}", level, function_name, record.args())
             }
