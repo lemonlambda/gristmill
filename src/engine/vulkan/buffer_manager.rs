@@ -16,8 +16,8 @@ pub enum StandardBufferMaps {
     #[default]
     Vertices,
     Indices,
-    ImguiVertices(usize),
-    ImguiIndices(usize),
+    GuiVertices(usize),
+    GuiIndices(usize),
 }
 
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq, Hash)]
@@ -41,10 +41,8 @@ impl Display for StandardBufferMaps {
         match self {
             StandardBufferMaps::Vertices => f.write_str("StandardBufferMaps::Vertices"),
             StandardBufferMaps::Indices => f.write_str("StandardBufferMaps::Indices"),
-            StandardBufferMaps::ImguiVertices(_) => {
-                f.write_str("StandardBufferMaps::ImguiVertices")
-            }
-            StandardBufferMaps::ImguiIndices(_) => f.write_str("StandardBufferMaps::ImguiIndices"),
+            StandardBufferMaps::GuiVertices(_) => f.write_str("StandardBufferMaps::GuiVertices"),
+            StandardBufferMaps::GuiIndices(_) => f.write_str("StandardBufferMaps::GuiIndices"),
         }
     }
 }
