@@ -4,6 +4,7 @@ use std::fmt::{Debug, Display};
 use std::ptr::copy_nonoverlapping;
 
 use anyhow::{Result, anyhow};
+use log::*;
 use std::hash::Hash;
 use vulkanalia::vk::*;
 use vulkanalia::{Device, Instance};
@@ -168,6 +169,15 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
         data: BufferManagerDataType<'a, T, S, U>,
         buffer_type: BufferManagerCopyType<S, U>,
     ) -> Result<()> {
+        unsafe { self.copy_data_to_buffer_with_size(data, buffer_type, size_of::<T>() as u64) }
+    }
+
+    pub unsafe fn copy_data_to_buffer_with_size<'a, T>(
+        &mut self,
+        data: BufferManagerDataType<'a, T, S, U>,
+        buffer_type: BufferManagerCopyType<S, U>,
+        size: u64,
+    ) -> Result<()> {
         if data == buffer_type {
             return Err(anyhow!("`data` and `buffer_type` are the same."));
         }
@@ -194,7 +204,7 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
                     let destination = self.device().map_memory(
                         buffer_pair.memory,
                         0,
-                        size_of::<T>() as u64,
+                        size,
                         MemoryMapFlags::empty(),
                     )?;
 
@@ -217,7 +227,7 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
                     command_pool,
                     source.buffer,
                     buffer_pair.buffer,
-                    size_of::<T>() as u64,
+                    size,
                 )?;
             },
             BufferManagerDataType::StandardBuffer {
@@ -238,7 +248,7 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
                     command_pool,
                     source.buffer,
                     buffer_pair.buffer,
-                    size_of::<T>() as u64,
+                    size,
                 )?;
             },
             BufferManagerDataType::UniformBuffers {
@@ -262,7 +272,7 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
                     command_pool,
                     source.buffer,
                     buffer_pair.buffer,
-                    size_of::<T>() as u64,
+                    size,
                 )?;
             },
         };
@@ -277,6 +287,7 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
         properties: MemoryPropertyFlags,
         size: u64,
     ) -> Result<()> {
+        debug!("Allocating a buffer named: {}", buffer_type);
         let buffer_pair = BufferPair::allocate_with_size(
             &self.instance(),
             &self.device(),
@@ -335,7 +346,9 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
         usage: BufferUsageFlags,
         properties: MemoryPropertyFlags,
     ) -> Result<()> {
-        unsafe { self.allocate_buffer_with_size(buffer_type, usage, properties, size_of::<B>()) }
+        unsafe {
+            self.allocate_buffer_with_size(buffer_type, usage, properties, size_of::<B>() as u64)
+        }
     }
 
     pub fn get_uniform_buffers(&self, name: U) -> &Vec<BufferPair> {
@@ -455,6 +468,7 @@ impl BufferPair {
         properties: MemoryPropertyFlags,
         size: u64,
     ) -> Result<Self> {
+        debug!("Allocating a buffer");
         let buffer_info = BufferCreateInfo::builder()
             .size(size)
             .usage(usage)
@@ -463,6 +477,10 @@ impl BufferPair {
         let buffer = unsafe { device.create_buffer(&buffer_info, None) }?;
 
         let requirements = unsafe { device.get_buffer_memory_requirements(buffer) };
+        debug!(
+            "Buffer Requirement Size: {}, with input size {}",
+            requirements.size, size
+        );
 
         let memory_info = MemoryAllocateInfo::builder()
             .allocation_size(requirements.size)
@@ -487,29 +505,14 @@ impl BufferPair {
         usage: BufferUsageFlags,
         properties: MemoryPropertyFlags,
     ) -> Result<Self> {
-        let buffer_info = BufferCreateInfo::builder()
-            .size(size_of::<S>() as u64)
-            .usage(usage)
-            .sharing_mode(SharingMode::EXCLUSIVE);
-
-        let buffer = unsafe { device.create_buffer(&buffer_info, None) }?;
-
-        let requirements = unsafe { device.get_buffer_memory_requirements(buffer) };
-
-        let memory_info = MemoryAllocateInfo::builder()
-            .allocation_size(requirements.size)
-            .memory_type_index(unsafe {
-                get_memory_type_index(instance, physical_device, properties, requirements)
-            }?);
-
-        let buffer_memory = unsafe { device.allocate_memory(&memory_info, None) }?;
-
-        (unsafe { device.bind_buffer_memory(buffer, buffer_memory, 0) })?;
-
-        Ok(Self {
-            buffer,
-            memory: buffer_memory,
-        })
+        Self::allocate_with_size(
+            instance,
+            device,
+            physical_device,
+            usage,
+            properties,
+            size_of::<S>() as u64,
+        )
     }
 
     pub fn split(&self) -> (Buffer, DeviceMemory) {
