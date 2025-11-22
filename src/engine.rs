@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use anyhow::Result;
-use log::*;
+pub use log::*;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::EventLoopWindowTarget;
 use winit::window::WindowBuilder;
