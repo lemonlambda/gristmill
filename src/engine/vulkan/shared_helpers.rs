@@ -1,7 +1,7 @@
 use anyhow::{Result, anyhow};
+use log::*;
 use vulkanalia::vk::*;
 use vulkanalia::{Device, Instance};
-
 
 pub unsafe fn get_memory_type_index(
     instance: &Instance,
@@ -64,6 +64,7 @@ pub unsafe fn copy_buffer(
     destination: Buffer,
     size: DeviceSize,
 ) -> Result<()> {
+    debug!("Copying to a buffer with size: {size}");
     let command_buffer = unsafe { begin_single_time_commands(device, command_pool) }?;
 
     let regions = BufferCopy::builder().size(size);
