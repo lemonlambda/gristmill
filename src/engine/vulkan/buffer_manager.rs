@@ -105,6 +105,16 @@ pub enum AllocateBufferType<S, U> {
     Uniform { name: U },
 }
 
+impl<S, U> Display for AllocateBufferType<S, U> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AllocateBufferType::Temp => f.write_str("AllocateBufferType::Temp"),
+            AllocateBufferType::Standard { .. } => f.write_str("AllocateBufferType::Standard"),
+            AllocateBufferType::Uniform { .. } => f.write_str("AllocateBufferType::Uniform"),
+        }
+    }
+}
+
 #[derive(Clone, Default, Debug)]
 pub struct BufferManager<S: BufferManagerRequirements, U: BufferManagerRequirements> {
     instance: Option<Instance>,
