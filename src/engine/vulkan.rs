@@ -1333,7 +1333,7 @@ impl VulkanApp {
                 info!("Buffer count: {}", gui_vulkan_info.buffer_count);
                 // for i in 0..=(gui_vulkan_info.buffer_count + 1) {
                 let i = 1;
-                let vertex_offset = if i == 0 { 0 } else { vertex_lengths[i] };
+                let vertex_offset = if i == 0 { 0 } else { vertex_lengths[i - 1] };
                 //     info!("Vertex Offset: {}", vertex_offset);
                 //     info!("Index Length: {}", index_lengths[i as usize]);
 
