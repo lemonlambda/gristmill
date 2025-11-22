@@ -39,3 +39,4 @@
     - [ ] Deduplicate the Partial Manager and Normal Manager docs
 - [ ] Partial Manager and World should share an Add World trait
 - [ ] Actually use draw data when rendering
+- [x] Abstract over the GUI struct to make it less of a hassle to work with. See `GuiVulkanInfo`

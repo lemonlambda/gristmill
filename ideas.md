@@ -1,3 +1,14 @@
 - Iron from blood
 - Acid mixing in machines to create certain things
 - Extracting more of something create bad effects for entire monster
+- Ice sliding puzzle automation
+  - Splitter triangle that changes direction everytime you hit it
+- Slick with digestive acid, like ice
+  - Items that can slide on the acid
+- Bug carrying on belts
+  - Spoilage on items, only some bugs can carry items
+  - Bug only items
+  - Some bugs carry items more roughly
+  - Volume, Weight, Raw Amount Capacity, Roughness
+  - Cold bugs
+  - Hot bugs
