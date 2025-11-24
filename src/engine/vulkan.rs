@@ -37,6 +37,9 @@ use crate::engine::{
 };
 
 pub mod buffer_manager;
+pub mod buffer_operations;
+pub mod image_handler;
+pub mod prelude;
 pub mod shared_helpers;
 
 const PORTABILITY_MACOS_VERSION: Version = Version::new(1, 3, 216);
@@ -505,90 +508,6 @@ impl VulkanApp {
         device: &Device,
         data: &mut VulkanData,
     ) -> Result<()> {
-        let image = File::open("resources/tuftie.png")?;
-
-        let decoder = png::Decoder::new(image);
-        let mut reader = decoder.read_info()?;
-
-        let mut pixels = vec![0; reader.info().raw_bytes()];
-        reader.next_frame(&mut pixels)?;
-
-        let size = reader.info().raw_bytes() as u64;
-        let (width, height) = reader.info().size();
-
-        let (staging_buffer, staging_buffer_memory) = unsafe {
-            Self::create_buffer(
-                instance,
-                device,
-                data,
-                size,
-                BufferUsageFlags::TRANSFER_SRC,
-                MemoryPropertyFlags::HOST_COHERENT | MemoryPropertyFlags::HOST_VISIBLE,
-            )
-        }?;
-
-        let memory =
-            unsafe { device.map_memory(staging_buffer_memory, 0, size, MemoryMapFlags::empty()) }?;
-
-        unsafe { copy_nonoverlapping(pixels.as_ptr(), memory.cast(), pixels.len()) };
-
-        unsafe { device.unmap_memory(staging_buffer_memory) };
-
-        let (texture_image, texture_image_memory) = unsafe {
-            Self::create_image(
-                instance,
-                device,
-                data,
-                width,
-                height,
-                Format::R8G8B8A8_SRGB,
-                ImageTiling::OPTIMAL,
-                ImageUsageFlags::SAMPLED | ImageUsageFlags::TRANSFER_DST,
-                MemoryPropertyFlags::DEVICE_LOCAL,
-            )
-        }?;
-
-        data.texture_image = texture_image;
-        data.texture_image_memory = texture_image_memory;
-
-        (unsafe {
-            Self::transition_image_layout(
-                device,
-                data,
-                data.texture_image,
-                Format::R8G8B8A8_SRGB,
-                ImageLayout::UNDEFINED,
-                ImageLayout::TRANSFER_DST_OPTIMAL,
-            )
-        })?;
-
-        (unsafe {
-            Self::copy_buffer_to_image(
-                device,
-                data,
-                staging_buffer,
-                data.texture_image,
-                width,
-                height,
-            )
-        })?;
-
-        (unsafe {
-            Self::transition_image_layout(
-                device,
-                data,
-                data.texture_image,
-                Format::R8G8B8A8_SRGB,
-                ImageLayout::TRANSFER_DST_OPTIMAL,
-                ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-            )
-        })?;
-
-        // Cleanup
-
-        unsafe { device.destroy_buffer(staging_buffer, None) };
-        unsafe { device.free_memory(staging_buffer_memory, None) };
-
         Ok(())
     }
 
