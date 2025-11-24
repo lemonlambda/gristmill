@@ -3,7 +3,7 @@
     - [ ] Name descriptor set
 - [x] Make instancing work
 - [x] Convert indices buffer to buffer manager
-~- [] Expand buffer manager to handle multiple buffer formats (image buffer mainly)~
+- [ ] Expand buffer manager to handle multiple buffer formats (image buffer mainly)
 - [x] Make logging system use function names
 - [x] Camera movement fully
 - [ ] Vertex movement
