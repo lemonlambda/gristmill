@@ -2,14 +2,16 @@ use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
 use anyhow::Result;
-use cgmath::{vec2, vec3};
+use cgmath::{Vector3, vec2, vec3};
 use egui::epaint::Primitive;
-use egui::{CentralPanel, ClippedPrimitive, Context, ViewportId};
-use egui_winit::State;
+use egui::{CentralPanel, ClippedPrimitive, Context, ViewportId, ViewportInfo};
+use egui_winit::{State, update_viewport_info};
 use log::*;
 use vulkanalia::vk::*;
+use winit::event::WindowEvent;
 use winit::window::Window;
 
+use crate::engine::vertex::{INDICES, VERTICES, VERTICES2};
 use crate::engine::vulkan::VulkanData;
 use crate::engine::vulkan::buffer_manager::{
     AllocateBufferType, BufferManagerCopyType, BufferManagerDataType, BufferManagerRequirements,
@@ -76,8 +78,13 @@ impl GuiApp {
         Ok(())
     }
 
+    pub fn window_events(&mut self, window: &Window, event: &WindowEvent) {
+        self.state.on_window_event(window, event);
+    }
+
     pub fn render(&mut self, window: &Window) -> Result<Vec<(Vec<Vertex>, Vec<u16>)>> {
-        let raw_input = self.state.egui_input();
+        // update_viewport_info(&mut viewport, self.state.egui_ctx(), window, false);
+        let raw_input = self.state.take_egui_input(window);
 
         let full_output = self.state.egui_ctx().run(raw_input.clone(), |ctx| {
             CentralPanel::default().show(ctx, |ui| {
@@ -91,14 +98,37 @@ impl GuiApp {
         let primitives = self
             .state
             .egui_ctx()
-            .tessellate(full_output.shapes, full_output.pixels_per_point)
+            .tessellate(full_output.shapes, full_output.pixels_per_point);
+
+        let size = window.inner_size();
+
+        info!("Pre-primitives: {primitives:?}");
+        let primitives: Vec<(Vec<Vertex>, Vec<u16>)> = primitives
             .into_iter()
-            .map(|p| (p.to_vertices(), p.to_indices()))
+            .map(|p| {
+                (
+                    p.to_vertices()
+                        .into_iter()
+                        .map(|mut v| {
+                            v.pos.x /= size.width as f32;
+                            v.pos.y /= size.height as f32;
+                            v
+                        })
+                        .collect(),
+                    p.to_indices(),
+                )
+            })
             .collect();
 
-        info!("Primitives: {:?}", primitives);
+        info!(
+            "Primitives: {:?}",
+            primitives
+                .iter()
+                .map(|v| { v.0.iter().map(|v| { v.pos }).collect::<Vec<Vector3<f32>>>() })
+                .collect::<Vec<Vec<Vector3<f32>>>>()
+        );
 
-        Ok(primitives)
+        Ok(vec![(VERTICES2.to_vec(), INDICES.to_vec())])
     }
 
     pub unsafe fn create_gui_buffers(

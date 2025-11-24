@@ -13,9 +13,9 @@ pub type Mat4 = cgmath::Matrix4<f32>;
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
 pub struct Vertex {
-    pos: Vec3,
-    color: Vec3,
-    tex_coord: Vec2,
+    pub pos: Vec3,
+    pub color: Vec3,
+    pub tex_coord: Vec2,
 }
 
 impl Vertex {
@@ -64,6 +64,12 @@ pub static VERTICES: [Vertex; 4] = [
     Vertex::new(vec3(0.5, -0.5, 0.0), vec3(0.0, 1.0, 0.0), vec2(0.0, 0.0)),
     Vertex::new(vec3(0.5, 0.5, 0.0), vec3(0.0, 0.0, 1.0), vec2(0.0, 1.0)),
     Vertex::new(vec3(-0.5, 0.5, 0.0), vec3(1.0, 1.0, 1.0), vec2(1.0, 1.0)),
+];
+pub static VERTICES2: [Vertex; 4] = [
+    Vertex::new(vec3(-0.7, -0.3, 0.0), vec3(1.0, 0.0, 0.0), vec2(1.0, 0.0)),
+    Vertex::new(vec3(0.7, -0.3, 0.0), vec3(0.0, 1.0, 0.0), vec2(0.0, 0.0)),
+    Vertex::new(vec3(0.7, 0.3, 0.0), vec3(0.0, 0.0, 1.0), vec2(0.0, 1.0)),
+    Vertex::new(vec3(-0.7, 0.3, 0.0), vec3(1.0, 1.0, 1.0), vec2(1.0, 1.0)),
 ];
 pub const INDICES: &[u16] = &[0, 1, 2, 2, 3, 0];
 

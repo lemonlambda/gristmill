@@ -44,7 +44,34 @@ pub struct FPSCounter(u32);
 pub fn engine_partial() -> PartialManager {
     PartialManager::new()
         .add_startup_systems((engine_startup as StartupSystem,).order_up())
-        .add_winit_event_systems((engine_main as WinitEventSystem,).order_up())
+        .add_winit_event_systems(
+            (
+                engine_main as WinitEventSystem,
+                engine_events as WinitEventSystem,
+            )
+                .order_up(),
+        )
+}
+
+pub fn engine_events(
+    world: &World,
+    event: Event<()>,
+    elwt: &EventLoopWindowTarget<()>,
+) -> Result<()> {
+    let engine = world.try_get_resource_mut::<Engine>();
+
+    if engine.is_none() {
+        warn!("Couldn't get engine resource!");
+        return Ok(());
+    }
+
+    let mut engine = engine.unwrap();
+
+    if let Event::WindowEvent { window_id, event } = event {
+        engine.vulkan_app.window_events(&event);
+    };
+
+    Ok(())
 }
 
 pub fn engine_startup(world: &mut World, event_loop: &EventLoop<()>) -> Result<()> {

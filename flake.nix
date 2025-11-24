@@ -39,8 +39,6 @@
             xorg.libXi
             xorg.libXrandr
             SDL2
-
-            renderdoc
           ];
 
           LD_LIBRARY_PATH = lib.makeLibraryPath buildInputs;

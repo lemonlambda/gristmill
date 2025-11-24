@@ -17,11 +17,13 @@ use vulkanalia::{
     vk::*,
     window::{create_surface, get_required_instance_extensions},
 };
-use winit::window::Window;
+use winit::{event::WindowEvent, window::Window};
 
 use crate::engine::{
     gui::{GuiApp, GuiVulkanInfo},
-    vertex::{INDICES, Mat4, SporadicBufferObject, UniformBufferObject, VERTICES, Vertex},
+    vertex::{
+        INDICES, Mat4, SporadicBufferObject, UniformBufferObject, VERTICES, VERTICES2, Vertex,
+    },
     vulkan::{
         buffer_manager::{
             AllocateBufferType, BufferManager, BufferManagerCopyType, BufferManagerDataType,
@@ -255,6 +257,10 @@ impl VulkanApp {
         self.frame = (self.frame + 1) % MAX_FRAMES_IN_FLIGHT;
 
         Ok(())
+    }
+
+    pub fn window_events(&mut self, event: &WindowEvent) {
+        self.gui.window_events(&self.window, event);
     }
 
     unsafe fn update_uniform_buffer(&self, image_index: usize) -> Result<()> {
@@ -706,12 +712,27 @@ impl VulkanApp {
             .application_version(make_version(1, 0, 0))
             .engine_name(b"Lemgine\0")
             .engine_version(make_version(1, 0, 0))
-            .api_version(make_version(1, 0, 0));
+            .api_version(Version::V1_0_0.into());
 
         let mut extensions = get_required_instance_extensions(window)
             .iter()
             .map(|e| e.as_ptr())
             .collect::<Vec<_>>();
+
+        info!(
+            "Extensions: {:?}",
+            extensions
+                .clone()
+                .into_iter()
+                .map(|x| unsafe {
+                    CStr::from_ptr(x.clone())
+                        .to_str()
+                        .unwrap()
+                        .to_owned()
+                        .clone()
+                })
+                .collect::<Vec<String>>()
+        );
 
         if VALIDATION_ENABLED {
             extensions.push(EXT_DEBUG_UTILS_EXTENSION.name.as_ptr());
@@ -1024,7 +1045,7 @@ impl VulkanApp {
             .rasterizer_discard_enable(false)
             .polygon_mode(PolygonMode::FILL)
             .line_width(1.0)
-            .cull_mode(CullModeFlags::BACK)
+            .cull_mode(CullModeFlags::NONE)
             .front_face(FrontFace::COUNTER_CLOCKWISE)
             .depth_bias_enable(false);
 
@@ -1293,7 +1314,7 @@ impl VulkanApp {
                     &mut index_lengths,
                 );
 
-                info!("{vertex_buffers:?}");
+                info!("Vertex Buffers: {vertex_buffers:?}");
 
                 device.cmd_begin_render_pass(*command_buffer, &info, SubpassContents::INLINE);
                 device.cmd_bind_pipeline(
@@ -1331,28 +1352,31 @@ impl VulkanApp {
                     model_bytes,
                 );
                 info!("Buffer count: {}", gui_vulkan_info.buffer_count);
-                // for i in 0..=(gui_vulkan_info.buffer_count + 1) {
-                let i = 1;
-                let vertex_offset = if i == 0 { 0 } else { vertex_lengths[i - 1] };
-                //     info!("Vertex Offset: {}", vertex_offset);
-                //     info!("Index Length: {}", index_lengths[i as usize]);
+                for i in 0..=(gui_vulkan_info.buffer_count + 1) {
+                    let vertex_offset = if i == 0 {
+                        0
+                    } else {
+                        vertex_lengths[i as usize - 1]
+                    };
+                    info!("Vertex Offset: {}", vertex_offset);
+                    info!("Index Length: {}", index_lengths[i as usize]);
 
-                device.cmd_bind_index_buffer(
-                    *command_buffer,
-                    index_buffers[1],
-                    0,
-                    IndexType::UINT16,
-                );
-
-                device.cmd_draw_indexed(
-                    *command_buffer,
-                    index_lengths[1],
-                    1,
-                    0,
-                    vertex_offset as i32,
-                    0,
-                );
-                // }
+                    device.cmd_bind_index_buffer(
+                        *command_buffer,
+                        index_buffers[i as usize],
+                        0,
+                        IndexType::UINT16,
+                    );
+                    device.cmd_draw_indexed(
+                        *command_buffer,
+                        index_lengths[i as usize],
+                        1,
+                        0,
+                        vertex_offset as i32,
+                        0,
+                    );
+                    info!("Ran {} draw call(s)", i + 1);
+                }
 
                 device.cmd_end_render_pass(*command_buffer);
                 device.end_command_buffer(*command_buffer)?;
@@ -1485,7 +1509,7 @@ impl VulkanApp {
             )?;
 
             data.buffer_manager.copy_data_to_buffer(
-                BufferManagerDataType::Data(&VERTICES),
+                BufferManagerDataType::Data(&VERTICES2),
                 BufferManagerCopyType::TempBuffer,
             )?;
 
