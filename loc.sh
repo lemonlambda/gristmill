@@ -1,1 +1,3 @@
-git ls-files | grep '\.rs' | xargs wc -l
+tre src
+tokei -f
+tokei
