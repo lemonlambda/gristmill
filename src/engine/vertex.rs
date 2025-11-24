@@ -26,30 +26,30 @@ impl Vertex {
             tex_coord,
         }
     }
-    pub fn binding_description() -> VertexInputBindingDescription {
+    pub fn binding_description(binding: u32) -> VertexInputBindingDescription {
         VertexInputBindingDescription::builder()
-            .binding(0)
+            .binding(binding)
             .stride(size_of::<Vertex>() as u32)
             .input_rate(VertexInputRate::VERTEX)
             .build()
     }
-    pub fn attribute_descriptions() -> [VertexInputAttributeDescription; 3] {
+    pub fn attribute_descriptions(binding: u32) -> [VertexInputAttributeDescription; 3] {
         let pos = VertexInputAttributeDescription::builder()
-            .binding(0)
+            .binding(binding)
             .location(0)
             .format(Format::R32G32B32_SFLOAT)
             .offset(0)
             .build();
 
         let color = VertexInputAttributeDescription::builder()
-            .binding(0)
+            .binding(binding)
             .location(1)
             .format(Format::R32G32B32_SFLOAT)
             .offset(size_of::<Vec2>() as u32)
             .build();
 
         let tex_coord = VertexInputAttributeDescription::builder()
-            .binding(0)
+            .binding(binding)
             .location(2)
             .format(Format::R32G32_SFLOAT)
             .offset((size_of::<Vec2>() + size_of::<Vec3>()) as u32)
@@ -66,10 +66,10 @@ pub static VERTICES: [Vertex; 4] = [
     Vertex::new(vec3(-0.5, 0.5, 0.0), vec3(1.0, 1.0, 1.0), vec2(1.0, 1.0)),
 ];
 pub static VERTICES2: [Vertex; 4] = [
-    Vertex::new(vec3(-0.7, -0.3, 0.0), vec3(1.0, 0.0, 0.0), vec2(1.0, 0.0)),
-    Vertex::new(vec3(0.7, -0.3, 0.0), vec3(0.0, 1.0, 0.0), vec2(0.0, 0.0)),
-    Vertex::new(vec3(0.7, 0.3, 0.0), vec3(0.0, 0.0, 1.0), vec2(0.0, 1.0)),
-    Vertex::new(vec3(-0.7, 0.3, 0.0), vec3(1.0, 1.0, 1.0), vec2(1.0, 1.0)),
+    Vertex::new(vec3(-1.7, -1.1, 0.0), vec3(1.0, 0.0, 0.0), vec2(1.0, 0.0)),
+    Vertex::new(vec3(1.7, -1.1, 0.0), vec3(0.0, 1.0, 0.0), vec2(0.0, 0.0)),
+    Vertex::new(vec3(1.7, 1.1, 0.0), vec3(0.0, 0.0, 1.0), vec2(0.0, 1.0)),
+    Vertex::new(vec3(-1.7, 1.1, 0.0), vec3(1.0, 1.0, 1.0), vec2(1.0, 1.0)),
 ];
 pub const INDICES: &[u16] = &[0, 1, 2, 2, 3, 0];
 

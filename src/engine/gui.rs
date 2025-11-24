@@ -11,7 +11,6 @@ use vulkanalia::vk::*;
 use winit::event::WindowEvent;
 use winit::window::Window;
 
-use crate::engine::vertex::{INDICES, VERTICES, VERTICES2};
 use crate::engine::vulkan::VulkanData;
 use crate::engine::vulkan::buffer_manager::{
     AllocateBufferType, BufferManagerCopyType, BufferManagerDataType, BufferManagerRequirements,
@@ -128,7 +127,7 @@ impl GuiApp {
                 .collect::<Vec<Vec<Vector3<f32>>>>()
         );
 
-        Ok(vec![(VERTICES2.to_vec(), INDICES.to_vec())])
+        Ok(primitives)
     }
 
     pub unsafe fn create_gui_buffers(
@@ -263,7 +262,7 @@ impl ConvertForVulkan for ClippedPrimitive {
                 .into_iter()
                 .map(|v| {
                     Vertex::new(
-                        vec3(v.pos.x, v.pos.y, 0.0),
+                        vec3(v.pos.x, v.pos.y, -3.0),
                         vec3(
                             v.color.r() as f32 / 255.0,
                             v.color.g() as f32 / 255.0,

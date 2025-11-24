@@ -17,6 +17,8 @@ pub enum StandardBufferMaps {
     #[default]
     Vertices,
     Indices,
+    ExtraVertices(usize),
+    ExtraIndices(usize),
     GuiVertices(usize),
     GuiIndices(usize),
 }
@@ -42,6 +44,10 @@ impl Display for StandardBufferMaps {
         match self {
             StandardBufferMaps::Vertices => f.write_str("StandardBufferMaps::Vertices"),
             StandardBufferMaps::Indices => f.write_str("StandardBufferMaps::Indices"),
+            StandardBufferMaps::ExtraVertices(_) => {
+                f.write_str("StandardBufferMaps::ExtraVertices")
+            }
+            StandardBufferMaps::ExtraIndices(_) => f.write_str("StandardBufferMaps::ExtraIndices"),
             StandardBufferMaps::GuiVertices(_) => f.write_str("StandardBufferMaps::GuiVertices"),
             StandardBufferMaps::GuiIndices(_) => f.write_str("StandardBufferMaps::GuiIndices"),
         }

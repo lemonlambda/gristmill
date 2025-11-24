@@ -68,10 +68,10 @@ pub fn update_movement(world: &World) -> Result<()> {
         engine_resource.vulkan_app.camera_position[0] -= value * delta_time;
     }
 
-    // info!(
-    //     "Camera Position: {:?}",
-    //     engine_resource.vulkan_app.camera_position
-    // );
+    info!(
+        "Camera Position: {:?}",
+        engine_resource.vulkan_app.camera_position
+    );
 
     Ok(())
 }
