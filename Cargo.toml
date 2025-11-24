@@ -5,7 +5,6 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.99"
-ash = "0.38.0"
 backtrace = "0.3.76"
 cgmath = "0.18.0"
 egui = "0.28"
@@ -20,4 +19,5 @@ pretty_env_logger = "0.5.0"
 seq-macro = "0.3.6"
 thiserror = "2.0.17"
 tobj = { version = "4.0.3", features = ["log"] }
+vulkanalia = { version = "0.32.0", features = ["libloading", "window"] }
 winit = "0.29"
