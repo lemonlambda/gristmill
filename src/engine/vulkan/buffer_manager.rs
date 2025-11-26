@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::ffi::CString;
 use std::fmt::{Debug, Display};
+use std::marker::PhantomData;
 use std::ptr::copy_nonoverlapping;
 
 use anyhow::{Result, anyhow};
@@ -10,7 +11,13 @@ use vulkanalia::vk::*;
 use vulkanalia::{Device, Instance};
 
 use crate::engine::vulkan::VALIDATION_ENABLED;
+use crate::engine::vulkan::buffer_manager::buffer_operations::BufferOperations;
+use crate::engine::vulkan::buffer_operations::BufferAllocator;
 use crate::engine::vulkan::shared_helpers::{copy_buffer, get_memory_type_index};
+
+pub mod buffer_operations;
+pub mod buffer_pair;
+pub mod image_handler;
 
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum StandardBufferMaps {
@@ -121,22 +128,33 @@ impl<S, U> Display for AllocateBufferType<S, U> {
 }
 
 #[derive(Clone, Default, Debug)]
-pub struct BufferManager<S: BufferManagerRequirements, U: BufferManagerRequirements> {
+pub struct BufferManager<
+    BufferType: BufferOperations + BufferManagerRequirements,
+    BufferAllocator: BufferAllocator<Output = Bt> + BufferManagerRequirements,
+    Standard: BufferManagerRequirements,
+    Uniform: BufferManagerRequirements,
+> {
     instance: Option<Instance>,
     device: Option<Device>,
     physical_device: PhysicalDevice,
-    pub temp_buffer: Option<BufferPair>,
-    pub buffers: HashMap<S, BufferPair>,
-    pub uniform_buffers: HashMap<U, Vec<BufferPair>>,
+    pub temp_buffer: Option<BufferType>,
+    pub buffers: HashMap<Standard, BufferType>,
+    pub uniform_buffers: HashMap<Uniform, Vec<BufferType>>,
+    needed_data: BufferAllocator,
 }
 
-impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S, U> {
-    pub fn new(instance: Instance, device: Device, physical_device: PhysicalDevice) -> Self {
-        let mut self_ = Self::default();
-        self_.instance = Some(instance);
-        self_.device = Some(device);
-        self_.physical_device = physical_device;
-        self_
+impl<
+    BufferType: BufferOperations + BufferManagerRequirements,
+    BufferAllocator: BufferAllocator<Output = Bt> + BufferManagerRequirements,
+    Standard: BufferManagerRequirements,
+    Uniform: BufferManagerRequirements,
+> BufferManager<BufferType, BufferAllocator, Standard, Uniform>
+{
+    pub fn new(data: BufferType) -> Self {
+        Self {
+            needed_data: data,
+            ..Default::default()
+        }
     }
 
     /// Internal function to skip writing out unwrap
@@ -172,8 +190,8 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
 
     pub unsafe fn copy_data_to_buffer<'a, T>(
         &mut self,
-        data: BufferManagerDataType<'a, T, S, U>,
-        buffer_type: BufferManagerCopyType<S, U>,
+        data: BufferManagerDataType<'a, T, Standard, Uniform>,
+        buffer_type: BufferManagerCopyType<Standard, Uniform>,
     ) -> Result<()> {
         unsafe { self.copy_data_to_buffer_with_size(data, buffer_type, size_of::<T>() as u64) }
     }
@@ -288,20 +306,13 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
 
     pub unsafe fn allocate_buffer_with_size(
         &mut self,
-        buffer_type: AllocateBufferType<S, U>,
+        buffer_type: AllocateBufferType<Standard, Uniform>,
         usage: BufferUsageFlags,
         properties: MemoryPropertyFlags,
         size: u64,
     ) -> Result<()> {
         debug!("Allocating a buffer named: {}", buffer_type);
-        let buffer_pair = BufferPair::allocate_with_size(
-            &self.instance(),
-            &self.device(),
-            self.physical_device,
-            usage,
-            properties,
-            size,
-        )?;
+        let buffer_pair = self.needed_data.allocate_with_size(size);
 
         match buffer_type {
             AllocateBufferType::Temp => {
@@ -346,33 +357,33 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
         Ok(())
     }
 
-    pub unsafe fn allocate_buffer<B>(
+    pub unsafe fn allocate_buffer<Size>(
         &mut self,
-        buffer_type: AllocateBufferType<S, U>,
+        buffer_type: AllocateBufferType<Standard, Uniform>,
         usage: BufferUsageFlags,
         properties: MemoryPropertyFlags,
     ) -> Result<()> {
         unsafe {
-            self.allocate_buffer_with_size(buffer_type, usage, properties, size_of::<B>() as u64)
+            self.allocate_buffer_with_size(buffer_type, usage, properties, size_of::<Size>() as u64)
         }
     }
 
-    pub fn get_uniform_buffers(&self, name: U) -> &Vec<BufferPair> {
+    pub fn get_uniform_buffers(&self, name: Uniform) -> &Vec<BufferPair> {
         self.uniform_buffers.get(&name).unwrap()
     }
 
-    pub fn get_standard_buffer(&mut self, name: S) -> &BufferPair {
+    pub fn get_standard_buffer(&mut self, name: Standard) -> &BufferPair {
         self.buffers.get(&name).unwrap()
     }
 
-    pub fn setup_uniform_buffer(&mut self, name: U) {
+    pub fn setup_uniform_buffer(&mut self, name: Uniform) {
         self.uniform_buffers.entry(name).or_insert(vec![]);
     }
 
-    pub unsafe fn create_buffer_descriptor_set<'a, UBO>(
+    pub unsafe fn create_buffer_descriptor_set<'a, UBOSize>(
         &self,
         binding: u32,
-        name: U,
+        name: Uniform,
         descriptor_sets: &[DescriptorSet],
     ) -> Vec<WriteDescriptorSetBuilder<'a>> {
         let mut descriptors = vec![];
@@ -381,7 +392,7 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
             let info = DescriptorBufferInfo::builder()
                 .buffer(buffer_pair.buffer)
                 .offset(0)
-                .range(size_of::<UBO>() as u64);
+                .range(size_of::<UBOSize>() as u64);
 
             let buffer_info = Box::new([info]);
 
@@ -432,7 +443,7 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
         self.temp_buffer = None;
     }
 
-    pub unsafe fn free_standard_buffer(&mut self, name: S) {
+    pub unsafe fn free_standard_buffer(&mut self, name: Standard) {
         let device = self.device();
 
         self.buffers
@@ -440,7 +451,7 @@ impl<S: BufferManagerRequirements, U: BufferManagerRequirements> BufferManager<S
             .and_modify(|b| unsafe { b.free(&device) });
     }
 
-    pub unsafe fn free_uniform_buffers(&mut self, name: U) {
+    pub unsafe fn free_uniform_buffers(&mut self, name: Uniform) {
         let device = self.device();
 
         self.uniform_buffers.entry(name).and_modify(|v| {

@@ -152,15 +152,14 @@ pub unsafe fn create_index_buffer(
             index_size,
         )?;
 
-        data.buffer_manager
-            .copy_data_to_buffer_with_size::<Vertex>(
-                BufferManagerDataType::TempBuffer {
-                    graphics_queue: data.graphics_queue,
-                    command_pool: data.command_pool,
-                },
-                BufferManagerCopyType::StandardBuffer(name),
-                index_size,
-            )?;
+        data.buffer_manager.copy_data_to_buffer_with_size::<u16>(
+            BufferManagerDataType::TempBuffer {
+                graphics_queue: data.graphics_queue,
+                command_pool: data.command_pool,
+            },
+            BufferManagerCopyType::StandardBuffer(name),
+            index_size,
+        )?;
 
         data.buffer_manager.free_temp_buffer()
     };
