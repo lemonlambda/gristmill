@@ -6,8 +6,9 @@ use vulkanalia::{Device, Instance};
 
 use crate::engine::vulkan::VulkanApp;
 use crate::engine::vulkan::VulkanData;
-use crate::engine::vulkan::buffer_operations::BufferAllocator;
-use crate::engine::vulkan::buffer_operations::create_buffer;
+use crate::engine::vulkan::buffer_manager::buffer_operations::BufferAllocator;
+use crate::engine::vulkan::buffer_manager::buffer_pair::create_buffer;
+use crate::engine::vulkan::prelude::get_memory_type_index;
 use vulkanalia::vk::*;
 
 pub struct ImageData {

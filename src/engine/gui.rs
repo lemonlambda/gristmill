@@ -11,14 +11,14 @@ use vulkanalia::vk::*;
 use winit::event::WindowEvent;
 use winit::window::Window;
 
+use crate::engine::vertex::Vertex;
 use crate::engine::vulkan::VulkanData;
-use crate::engine::vulkan::buffer_manager::{
-    AllocateBufferType, BufferManagerCopyType, BufferManagerDataType, BufferManagerRequirements,
-    UniformBufferMaps,
+use crate::engine::vulkan::buffer_manager::buffer_pair::{
+    BufferPairData, StandardBufferMaps, UniformBufferMaps,
 };
-use crate::engine::{
-    vertex::Vertex,
-    vulkan::buffer_manager::{BufferManager, StandardBufferMaps},
+use crate::engine::vulkan::buffer_manager::{
+    AllocateBufferType, BufferManager, BufferManagerCopyType, BufferManagerDataType,
+    buffer_pair::BufferPair,
 };
 
 pub struct GuiVulkanInfo {
@@ -30,7 +30,7 @@ pub struct GuiVulkanInfo {
 impl GuiVulkanInfo {
     pub fn add_to_vertex_buffers(
         &mut self,
-        buffer_manager: &mut BufferManager<StandardBufferMaps, UniformBufferMaps>,
+        buffer_manager: &mut BufferManager<BufferPair, StandardBufferMaps, UniformBufferMaps>,
         vertex_buffers: &mut Vec<Buffer>,
         vertex_lengths: &mut Vec<u32>,
     ) {
@@ -46,7 +46,7 @@ impl GuiVulkanInfo {
 
     pub fn add_to_index_buffers(
         &mut self,
-        buffer_manager: &mut BufferManager<StandardBufferMaps, UniformBufferMaps>,
+        buffer_manager: &mut BufferManager<BufferPair, StandardBufferMaps, UniformBufferMaps>,
         index_buffers: &mut Vec<Buffer>,
         index_lengths: &mut Vec<u32>,
     ) {

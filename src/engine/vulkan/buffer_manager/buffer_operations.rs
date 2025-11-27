@@ -18,7 +18,22 @@ pub trait BufferAllocator {
 }
 
 pub trait BufferOperations {
-    type DropData<'a>;
+    type DropData<'a>: Clone;
+    type BufferType;
 
-    fn free<'a>(&mut self, drop_data: Self::DropData<'a>);
+    fn get_buffer(&self) -> Self::BufferType;
+    fn get_memory(&self) -> DeviceMemory;
+
+    unsafe fn free<'a>(&mut self, drop_data: Self::DropData<'a>);
+}
+
+pub trait SupportsCopying {
+    fn copy(
+        &mut self,
+        destination: Self,
+        graphics_queue: Queue,
+        command_pool: CommandPool,
+        device: Device,
+        size: u64,
+    ) -> Result<()>;
 }

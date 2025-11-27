@@ -26,8 +26,8 @@ use crate::engine::{
     },
     vulkan::{
         buffer_manager::{
-            AllocateBufferType, BufferManager, BufferManagerCopyType, BufferManagerDataType,
-            StandardBufferMaps, UniformBufferMaps,
+            AllocateBufferType, BufferManager,
+            buffer_pair::{BufferPair, BufferPairData, StandardBufferMaps, UniformBufferMaps},
         },
         shared_helpers::{
             begin_single_time_commands, create_index_buffer, create_vertex_buffer,
@@ -37,8 +37,6 @@ use crate::engine::{
 };
 
 pub mod buffer_manager;
-pub mod buffer_operations;
-pub mod image_handler;
 pub mod prelude;
 pub mod shared_helpers;
 
@@ -126,7 +124,7 @@ pub struct VulkanData {
     pub depth_image: Image,
     pub depth_image_memory: DeviceMemory,
     pub depth_image_view: ImageView,
-    pub buffer_manager: BufferManager<StandardBufferMaps, UniformBufferMaps>,
+    pub buffer_manager: BufferManager<BufferPair, StandardBufferMaps, UniformBufferMaps>,
 }
 
 impl VulkanApp {
@@ -141,11 +139,12 @@ impl VulkanApp {
             let device = Self::create_logical_device(&entry, &instance, &mut data)?;
             let mut gui = GuiApp::new(&window);
             unsafe {
-                data.buffer_manager = BufferManager::<StandardBufferMaps, UniformBufferMaps>::new(
-                    instance.clone(),
-                    device.clone(),
-                    data.physical_device,
-                );
+                data.buffer_manager =
+                    BufferManager::<BufferPair, StandardBufferMaps, UniformBufferMaps>::new(
+                        instance.clone(),
+                        device.clone(),
+                        device.clone(),
+                    );
                 Self::create_swapchain(&window, &instance, &device, &mut data)?;
                 Self::create_swapchain_image_views(&device, &mut data)?;
                 Self::create_render_pass(&instance, &device, &mut data)?;
@@ -1354,20 +1353,33 @@ impl VulkanApp {
 
         for _ in 0..data.swapchain_images.len() {
             unsafe {
-                data.buffer_manager.allocate_buffer::<UniformBufferObject>(
-                    AllocateBufferType::Uniform {
-                        name: UniformBufferMaps::ModelViewProject,
-                    },
-                    BufferUsageFlags::UNIFORM_BUFFER,
-                    MemoryPropertyFlags::HOST_COHERENT | MemoryPropertyFlags::HOST_VISIBLE,
-                )?;
                 data.buffer_manager
-                    .allocate_buffer::<SporadicBufferObject>(
+                    .allocate_buffer::<BufferPairData, UniformBufferObject>(
+                        AllocateBufferType::Uniform {
+                            name: UniformBufferMaps::ModelViewProject,
+                        },
+                        BufferPairData {
+                            instance: &data.buffer_manager.instance(),
+                            device: &data.buffer_manager.device(),
+                            physical_device: data.buffer_manager.physical_device,
+                            usage: BufferUsageFlags::UNIFORM_BUFFER,
+                            properties: MemoryPropertyFlags::HOST_COHERENT
+                                | MemoryPropertyFlags::HOST_VISIBLE,
+                        },
+                    )?;
+                data.buffer_manager
+                    .allocate_buffer::<BufferPairData, SporadicBufferObject>(
                         AllocateBufferType::Uniform {
                             name: UniformBufferMaps::SporadicBufferObject,
                         },
-                        BufferUsageFlags::UNIFORM_BUFFER,
-                        MemoryPropertyFlags::HOST_COHERENT | MemoryPropertyFlags::HOST_VISIBLE,
+                        BufferPairData {
+                            instance: &data.buffer_manager.instance(),
+                            device: &data.buffer_manager.device(),
+                            physical_device: data.buffer_manager.physical_device,
+                            usage: BufferUsageFlags::UNIFORM_BUFFER,
+                            properties: MemoryPropertyFlags::HOST_COHERENT
+                                | MemoryPropertyFlags::HOST_VISIBLE,
+                        },
                     )?;
             };
         }

@@ -1,22 +1,23 @@
 use crate::engine::vulkan::{
     VulkanData,
-    buffer_manager::buffer_operations::{BufferAllocator, BufferOperations},
+    buffer_manager::buffer_operations::{BufferAllocator, BufferOperations, SupportsCopying},
 };
+use std::fmt::Display;
 
 use super::super::prelude::*;
 
-#[derive(Default, Debug, Clone, Copy, PartialEq)]
+#[derive(Default, Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub struct BufferPair {
     pub buffer: Buffer,
     pub memory: DeviceMemory,
 }
 
 pub struct BufferPairData<'a> {
-    instance: &'a Instance,
-    device: &'a Device,
-    physical_device: PhysicalDevice,
-    usage: BufferUsageFlags,
-    properties: MemoryPropertyFlags,
+    pub instance: &'a Instance,
+    pub device: &'a Device,
+    pub physical_device: PhysicalDevice,
+    pub usage: BufferUsageFlags,
+    pub properties: MemoryPropertyFlags,
 }
 
 impl<'a> BufferAllocator for BufferPairData<'a> {
@@ -73,11 +74,46 @@ impl BufferPair {
 }
 
 impl BufferOperations for BufferPair {
-    type DropData<'a> = &'a mut Device;
+    type DropData<'a> = Device;
+    type BufferType = Buffer;
+
+    fn get_buffer(&self) -> Self::BufferType {
+        self.buffer.clone()
+    }
+
+    fn get_memory(&self) -> DeviceMemory {
+        self.memory.clone()
+    }
 
     unsafe fn free<'a>(&mut self, device: Self::DropData<'a>) {
         unsafe { device.destroy_buffer(self.buffer, None) };
         unsafe { device.free_memory(self.memory, None) };
+    }
+}
+
+impl SupportsCopying for BufferPair {
+    fn copy(
+        &mut self,
+        destination: Self,
+        graphics_queue: Queue,
+        command_pool: CommandPool,
+        device: Device,
+        size: u64,
+    ) -> Result<()> {
+        unsafe {
+            device.unmap_memory(self.memory);
+
+            copy_buffer(
+                &device,
+                graphics_queue,
+                command_pool,
+                self.buffer,
+                destination.buffer,
+                size,
+            )?;
+        }
+
+        Ok(())
     }
 }
 
@@ -109,4 +145,51 @@ pub unsafe fn create_buffer(
     (unsafe { device.bind_buffer_memory(buffer, buffer_memory, 0) })?;
 
     Ok((buffer, buffer_memory))
+}
+
+#[derive(Default, Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub enum StandardBufferMaps {
+    #[default]
+    Vertices,
+    Indices,
+    ExtraVertices(usize),
+    ExtraIndices(usize),
+    GuiVertices(usize),
+    GuiIndices(usize),
+}
+
+#[derive(Default, Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub enum UniformBufferMaps {
+    #[default]
+    ModelViewProject,
+    SporadicBufferObject,
+    TextureSampler,
+}
+
+impl Display for StandardBufferMaps {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StandardBufferMaps::Vertices => f.write_str("StandardBufferMaps::Vertices"),
+            StandardBufferMaps::Indices => f.write_str("StandardBufferMaps::Indices"),
+            StandardBufferMaps::ExtraVertices(_) => {
+                f.write_str("StandardBufferMaps::ExtraVertices")
+            }
+            StandardBufferMaps::ExtraIndices(_) => f.write_str("StandardBufferMaps::ExtraIndices"),
+            StandardBufferMaps::GuiVertices(_) => f.write_str("StandardBufferMaps::GuiVertices"),
+            StandardBufferMaps::GuiIndices(_) => f.write_str("StandardBufferMaps::GuiIndices"),
+        }
+    }
+}
+impl Display for UniformBufferMaps {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UniformBufferMaps::ModelViewProject => {
+                f.write_str("UniformBufferMaps::ModelViewProject")
+            }
+            UniformBufferMaps::SporadicBufferObject => {
+                f.write_str("UniformBufferMaps::SporadicBufferObject")
+            }
+            UniformBufferMaps::TextureSampler => f.write_str("UniformBufferMaps::TextureSampler"),
+        }
+    }
 }

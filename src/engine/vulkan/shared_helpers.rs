@@ -5,9 +5,10 @@ use vulkanalia::{Device, Instance};
 
 use crate::engine::vertex::Vertex;
 use crate::engine::vulkan::VulkanData;
+use crate::engine::vulkan::buffer_manager::buffer_pair::StandardBufferMaps;
 use crate::engine::vulkan::buffer_manager::{
     AllocateBufferType, BufferManager, BufferManagerCopyType, BufferManagerDataType,
-    BufferManagerRequirements, StandardBufferMaps,
+    BufferManagerRequirements,
 };
 
 pub unsafe fn get_memory_type_index(
