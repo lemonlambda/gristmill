@@ -81,6 +81,7 @@ impl<S, U> Display for AllocateBufferType<S, U> {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct BufferManager<
     Buffer: BufferOperations + Default,
     Standard: BufferManagerRequirements,
@@ -92,7 +93,26 @@ pub struct BufferManager<
     pub temp_buffer: Option<Buffer>,
     pub buffers: HashMap<Standard, Buffer>,
     pub uniform_buffers: HashMap<Uniform, Vec<Buffer>>,
-    pub drop_data: Buffer::DropData<'static>,
+    pub drop_data: Option<Buffer::DropData<'static>>,
+}
+
+impl<
+    Buffer: BufferOperations + Default,
+    Standard: BufferManagerRequirements,
+    Uniform: BufferManagerRequirements,
+> Default for BufferManager<Buffer, Standard, Uniform>
+{
+    fn default() -> Self {
+        Self {
+            instance: None,
+            device: None,
+            physical_device: PhysicalDevice::default(),
+            drop_data: None,
+            temp_buffer: None,
+            buffers: HashMap::new(),
+            uniform_buffers: HashMap::new(),
+        }
+    }
 }
 
 impl<
@@ -106,7 +126,7 @@ impl<
             instance: Some(instance),
             device: Some(device.clone()),
             physical_device: device.physical_device(),
-            drop_data,
+            drop_data: Some(drop_data),
             temp_buffer: None,
             buffers: HashMap::new(),
             uniform_buffers: HashMap::new(),
@@ -262,7 +282,7 @@ impl<
             AllocateBufferType::Standard { name } => {
                 if let Some(b) = self.buffers.get_mut(&name) {
                     unsafe {
-                        b.free(self.drop_data.clone());
+                        b.free(self.drop_data.clone().unwrap());
                     }
                     *b = buffer;
                 } else {
@@ -320,60 +340,61 @@ impl<
         self.uniform_buffers.entry(name).or_insert(vec![]);
     }
 
-    // TODO: Gotta eventually rewrite this
-    // pub unsafe fn create_buffer_descriptor_set<'a, UBOSize>(
-    //     &self,
-    //     binding: u32,
-    //     name: Uniform,
-    //     descriptor_sets: &[DescriptorSet],
-    // ) -> Vec<WriteDescriptorSetBuilder<'a>> {
-    //     let mut descriptors = vec![];
+    pub unsafe fn create_buffer_descriptor_set<'a, UBOSize>(
+        &self,
+        binding: u32,
+        name: Uniform,
+        descriptor_sets: &[DescriptorSet],
+    ) -> Vec<WriteDescriptorSetBuilder<'a>>
+    where
+        Buffer: Into<vulkanalia::vk::Buffer> + Clone,
+    {
+        let mut descriptors = vec![];
 
-    //     for (i, buffer_pair) in self.get_uniform_buffers(name).iter().enumerate() {
-    //         let info = DescriptorBufferInfo::builder()
-    //             .buffer(buffer_pair.get_buffer())
-    //             .offset(0)
-    //             .range(size_of::<UBOSize>() as u64);
+        for (i, buffer_pair) in self.get_uniform_buffers(name).iter().enumerate() {
+            let info = DescriptorBufferInfo::builder()
+                .buffer(buffer_pair.clone().into())
+                .offset(0)
+                .range(size_of::<UBOSize>() as u64);
 
-    //         let buffer_info = Box::new([info]);
+            let buffer_info = Box::new([info]);
 
-    //         // WARNING: This probably never gets cleaned up I'm not really sure
-    //         // TODO: Make sure this gets cleaned up if it doesn't automatically
-    //         let buffer_info: &'a mut _ = Box::leak(buffer_info);
+            // WARNING: This probably never gets cleaned up I'm not really sure
+            // TODO: Make sure this gets cleaned up if it doesn't automatically
+            let buffer_info: &'a mut _ = Box::leak(buffer_info);
 
-    //         descriptors.push(
-    //             WriteDescriptorSet::builder()
-    //                 .dst_set(descriptor_sets[i])
-    //                 .dst_binding(binding)
-    //                 .dst_array_element(0)
-    //                 .descriptor_type(DescriptorType::UNIFORM_BUFFER)
-    //                 .buffer_info(buffer_info),
-    //         );
-    //     }
+            descriptors.push(
+                WriteDescriptorSet::builder()
+                    .dst_set(descriptor_sets[i])
+                    .dst_binding(binding)
+                    .dst_array_element(0)
+                    .descriptor_type(DescriptorType::UNIFORM_BUFFER)
+                    .buffer_info(buffer_info),
+            );
+        }
 
-    //     descriptors
-    // }
+        descriptors
+    }
 
-    // TODO: Gotta eventually rewrite this
-    // pub unsafe fn create_descriptor_set_layout<'a>(
-    //     &mut self,
-    //     additional_descriptors: Option<Vec<DescriptorSetLayoutBindingBuilder<'a>>>,
-    // ) -> Result<DescriptorSetLayout> {
-    //     let mut bindings = additional_descriptors.unwrap_or(vec![]);
+    pub unsafe fn create_descriptor_set_layout<'a>(
+        &mut self,
+        additional_descriptors: Option<Vec<DescriptorSetLayoutBindingBuilder<'a>>>,
+    ) -> Result<DescriptorSetLayout> {
+        let mut bindings = additional_descriptors.unwrap_or(vec![]);
 
-    //     for (i, _) in self.uniform_buffers.iter().enumerate() {
-    //         bindings.push(
-    //             DescriptorSetLayoutBinding::builder()
-    //                 .binding(i as u32)
-    //                 .descriptor_type(DescriptorType::UNIFORM_BUFFER)
-    //                 .descriptor_count(1)
-    //                 .stage_flags(ShaderStageFlags::VERTEX),
-    //         );
-    //     }
+        for (i, _) in self.uniform_buffers.iter().enumerate() {
+            bindings.push(
+                DescriptorSetLayoutBinding::builder()
+                    .binding(i as u32)
+                    .descriptor_type(DescriptorType::UNIFORM_BUFFER)
+                    .descriptor_count(1)
+                    .stage_flags(ShaderStageFlags::VERTEX),
+            );
+        }
 
-    //     let info = DescriptorSetLayoutCreateInfo::builder().bindings(&bindings);
-    //     unsafe { Ok(self.device().create_descriptor_set_layout(&info, None)?) }
-    // }
+        let info = DescriptorSetLayoutCreateInfo::builder().bindings(&bindings);
+        unsafe { Ok(self.device().create_descriptor_set_layout(&info, None)?) }
+    }
 
     pub unsafe fn free_temp_buffer(&mut self) {
         if self.temp_buffer.is_none() {
@@ -384,7 +405,7 @@ impl<
             self.temp_buffer
                 .as_mut()
                 .unwrap()
-                .free(self.drop_data.clone())
+                .free(self.drop_data.clone().unwrap())
         };
 
         self.temp_buffer = None;
@@ -393,7 +414,7 @@ impl<
     pub unsafe fn free_standard_buffer(&mut self, name: Standard) {
         self.buffers
             .entry(name)
-            .and_modify(|b| unsafe { b.free(self.drop_data.clone()) });
+            .and_modify(|b| unsafe { b.free(self.drop_data.clone().unwrap()) });
     }
 
     pub unsafe fn free_uniform_buffers(&mut self, name: Uniform) {
@@ -401,7 +422,7 @@ impl<
             let _ = v
                 .iter_mut()
                 .map(|b| unsafe {
-                    b.free(self.drop_data.clone());
+                    b.free(self.drop_data.clone().unwrap());
                 })
                 .collect::<Vec<_>>();
             v.clear();

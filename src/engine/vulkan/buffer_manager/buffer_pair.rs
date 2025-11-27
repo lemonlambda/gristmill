@@ -193,3 +193,9 @@ impl Display for UniformBufferMaps {
         }
     }
 }
+
+impl Into<Buffer> for BufferPair {
+    fn into(self) -> Buffer {
+        self.buffer
+    }
+}

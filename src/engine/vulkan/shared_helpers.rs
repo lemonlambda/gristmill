@@ -5,7 +5,7 @@ use vulkanalia::{Device, Instance};
 
 use crate::engine::vertex::Vertex;
 use crate::engine::vulkan::VulkanData;
-use crate::engine::vulkan::buffer_manager::buffer_pair::StandardBufferMaps;
+use crate::engine::vulkan::buffer_manager::buffer_pair::{BufferPairData, StandardBufferMaps};
 use crate::engine::vulkan::buffer_manager::{
     AllocateBufferType, BufferManager, BufferManagerCopyType, BufferManagerDataType,
     BufferManagerRequirements,
@@ -93,8 +93,13 @@ pub unsafe fn create_vertex_buffer(
 
         data.buffer_manager.allocate_buffer_with_size(
             AllocateBufferType::Temp,
-            BufferUsageFlags::TRANSFER_SRC,
-            MemoryPropertyFlags::HOST_COHERENT | MemoryPropertyFlags::HOST_VISIBLE,
+            BufferPairData {
+                instance: &data.buffer_manager.instance(),
+                device: &data.buffer_manager.device(),
+                physical_device: data.buffer_manager.physical_device,
+                usage: BufferUsageFlags::TRANSFER_SRC,
+                properties: MemoryPropertyFlags::HOST_COHERENT | MemoryPropertyFlags::HOST_VISIBLE,
+            },
             buffer_size,
         )?;
 
@@ -105,8 +110,13 @@ pub unsafe fn create_vertex_buffer(
 
         data.buffer_manager.allocate_buffer_with_size(
             AllocateBufferType::Standard { name },
-            BufferUsageFlags::VERTEX_BUFFER | BufferUsageFlags::TRANSFER_DST,
-            MemoryPropertyFlags::DEVICE_LOCAL,
+            BufferPairData {
+                instance: &data.buffer_manager.instance(),
+                device: &data.buffer_manager.device(),
+                physical_device: data.buffer_manager.physical_device,
+                usage: BufferUsageFlags::VERTEX_BUFFER | BufferUsageFlags::TRANSFER_DST,
+                properties: MemoryPropertyFlags::DEVICE_LOCAL,
+            },
             buffer_size,
         )?;
 
@@ -136,8 +146,13 @@ pub unsafe fn create_index_buffer(
 
         data.buffer_manager.allocate_buffer_with_size(
             AllocateBufferType::Temp,
-            BufferUsageFlags::TRANSFER_SRC,
-            MemoryPropertyFlags::HOST_COHERENT | MemoryPropertyFlags::HOST_VISIBLE,
+            BufferPairData {
+                instance: &data.buffer_manager.instance(),
+                device: &data.buffer_manager.device(),
+                physical_device: data.buffer_manager.physical_device,
+                usage: BufferUsageFlags::TRANSFER_SRC,
+                properties: MemoryPropertyFlags::HOST_COHERENT | MemoryPropertyFlags::HOST_VISIBLE,
+            },
             index_size,
         )?;
 
@@ -148,8 +163,13 @@ pub unsafe fn create_index_buffer(
 
         data.buffer_manager.allocate_buffer_with_size(
             AllocateBufferType::Standard { name },
-            BufferUsageFlags::INDEX_BUFFER | BufferUsageFlags::TRANSFER_DST,
-            MemoryPropertyFlags::DEVICE_LOCAL,
+            BufferPairData {
+                instance: &data.buffer_manager.instance(),
+                device: &data.buffer_manager.device(),
+                physical_device: data.buffer_manager.physical_device,
+                usage: BufferUsageFlags::INDEX_BUFFER | BufferUsageFlags::TRANSFER_DST,
+                properties: MemoryPropertyFlags::DEVICE_LOCAL,
+            },
             index_size,
         )?;
 

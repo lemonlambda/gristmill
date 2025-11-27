@@ -20,6 +20,7 @@ use crate::engine::vulkan::buffer_manager::{
     AllocateBufferType, BufferManager, BufferManagerCopyType, BufferManagerDataType,
     buffer_pair::BufferPair,
 };
+use crate::engine::vulkan::prelude::{create_index_buffer, create_vertex_buffer};
 
 pub struct GuiVulkanInfo {
     pub buffer_count: u32,
@@ -162,44 +163,7 @@ impl GuiApp {
         vertices: Vec<Vertex>,
         idx: usize,
     ) -> Result<()> {
-        unsafe {
-            let vertex_buffer_size = (size_of::<Vertex>() * vertices.len()) as u64;
-
-            data.buffer_manager.allocate_buffer_with_size(
-                AllocateBufferType::Temp,
-                BufferUsageFlags::TRANSFER_SRC,
-                MemoryPropertyFlags::HOST_COHERENT | MemoryPropertyFlags::HOST_VISIBLE,
-                vertex_buffer_size,
-            )?;
-
-            data.buffer_manager
-                .copy_data_to_buffer_with_size::<Vertex>(
-                    BufferManagerDataType::Data(&vertices),
-                    BufferManagerCopyType::TempBuffer,
-                    vertex_buffer_size,
-                )?;
-
-            data.buffer_manager.allocate_buffer_with_size(
-                AllocateBufferType::Standard {
-                    name: StandardBufferMaps::GuiVertices(idx),
-                },
-                BufferUsageFlags::VERTEX_BUFFER | BufferUsageFlags::TRANSFER_DST,
-                MemoryPropertyFlags::DEVICE_LOCAL,
-                vertex_buffer_size,
-            )?;
-
-            data.buffer_manager
-                .copy_data_to_buffer_with_size::<Vertex>(
-                    BufferManagerDataType::TempBuffer {
-                        graphics_queue: data.graphics_queue,
-                        command_pool: data.command_pool,
-                    },
-                    BufferManagerCopyType::StandardBuffer(StandardBufferMaps::GuiVertices(idx)),
-                    vertex_buffer_size,
-                )?;
-
-            data.buffer_manager.free_temp_buffer()
-        };
+        unsafe { create_vertex_buffer(data, StandardBufferMaps::GuiVertices(idx), vertices) };
 
         Ok(())
     }
@@ -209,41 +173,7 @@ impl GuiApp {
         indices: Vec<u16>,
         idx: usize,
     ) -> Result<()> {
-        unsafe {
-            let index_buffer_size = (size_of::<u16>() * indices.len()) as u64;
-
-            data.buffer_manager.allocate_buffer_with_size(
-                AllocateBufferType::Temp,
-                BufferUsageFlags::TRANSFER_SRC,
-                MemoryPropertyFlags::HOST_COHERENT | MemoryPropertyFlags::HOST_VISIBLE,
-                index_buffer_size,
-            )?;
-
-            data.buffer_manager.copy_data_to_buffer(
-                BufferManagerDataType::Data(&indices),
-                BufferManagerCopyType::TempBuffer,
-            )?;
-
-            data.buffer_manager.allocate_buffer_with_size(
-                AllocateBufferType::Standard {
-                    name: StandardBufferMaps::GuiIndices(idx),
-                },
-                BufferUsageFlags::INDEX_BUFFER | BufferUsageFlags::TRANSFER_DST,
-                MemoryPropertyFlags::DEVICE_LOCAL,
-                index_buffer_size,
-            )?;
-
-            data.buffer_manager.copy_data_to_buffer_with_size::<u16>(
-                BufferManagerDataType::TempBuffer {
-                    graphics_queue: data.graphics_queue,
-                    command_pool: data.command_pool,
-                },
-                BufferManagerCopyType::StandardBuffer(StandardBufferMaps::GuiIndices(idx)),
-                index_buffer_size,
-            )?;
-
-            data.buffer_manager.free_temp_buffer()
-        };
+        unsafe { create_index_buffer(data, StandardBufferMaps::GuiIndices(idx), indices) };
 
         Ok(())
     }
