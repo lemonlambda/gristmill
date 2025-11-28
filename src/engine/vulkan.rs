@@ -1040,7 +1040,7 @@ impl VulkanApp {
                 let attachments = &[
                     *i,
                     data.image_manager
-                        .get_standard_buffer(TextureName::Bird)
+                        .get_standard_buffer(TextureName::Depth)
                         .image_view,
                 ];
                 let create_info = FramebufferCreateInfo::builder()
