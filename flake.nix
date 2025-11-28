@@ -39,6 +39,9 @@
             xorg.libXi
             xorg.libXrandr
             SDL2
+
+            valgrind
+            gdb
           ];
 
           LD_LIBRARY_PATH = lib.makeLibraryPath buildInputs;

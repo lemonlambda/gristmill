@@ -27,7 +27,11 @@ use crate::engine::{
     vulkan::{
         buffer_manager::{
             AllocateBufferType, BufferManager,
+            buffer_operations::BufferOperations,
             buffer_pair::{BufferPair, BufferPairData, StandardBufferMaps, UniformBufferMaps},
+            image_handler::{
+                ImageData, Texture, TextureAllocatorData, TextureGroupName, TextureName,
+            },
         },
         shared_helpers::{
             begin_single_time_commands, create_index_buffer, create_vertex_buffer,
@@ -117,14 +121,9 @@ pub struct VulkanData {
     pub descriptor_pool: DescriptorPool,
     pub descriptor_sets: Vec<DescriptorSet>,
     pub swapchain_min_image_count: u32,
-    pub texture_image: Image,
-    pub texture_image_memory: DeviceMemory,
-    pub texture_image_view: ImageView,
     pub texture_sampler: Sampler,
-    pub depth_image: Image,
-    pub depth_image_memory: DeviceMemory,
-    pub depth_image_view: ImageView,
     pub buffer_manager: BufferManager<BufferPair, StandardBufferMaps, UniformBufferMaps>,
+    pub image_manager: BufferManager<Texture, TextureName, TextureGroupName>,
 }
 
 impl VulkanApp {
@@ -145,16 +144,42 @@ impl VulkanApp {
                         device.clone(),
                         device.clone(),
                     );
+                data.image_manager = BufferManager::<Texture, TextureName, TextureGroupName>::new(
+                    instance.clone(),
+                    device.clone(),
+                    device.clone(),
+                );
                 Self::create_swapchain(&window, &instance, &device, &mut data)?;
                 Self::create_swapchain_image_views(&device, &mut data)?;
                 Self::create_render_pass(&instance, &device, &mut data)?;
                 Self::create_descriptor_set_layout(&mut data)?;
                 Self::create_pipeline(&device, &mut data)?;
                 Self::create_command_pool(&instance, &device, &mut data)?;
+                data.image_manager
+                    .allocate_buffer::<TextureAllocatorData, Image>(
+                        AllocateBufferType::Standard {
+                            name: TextureName::Bird,
+                        },
+                        TextureAllocatorData {
+                            instance: &instance,
+                            device: &device,
+                            data: &mut data.clone(),
+                            image_data: ImageData::from_path(
+                                &instance,
+                                &device,
+                                &mut data.clone(),
+                                "resources/tuftie.png",
+                            )?,
+                            format: Format::R8G8B8A8_SRGB,
+                            tiling: ImageTiling::OPTIMAL,
+                            usage: ImageUsageFlags::SAMPLED | ImageUsageFlags::TRANSFER_DST,
+                            properties: MemoryPropertyFlags::DEVICE_LOCAL,
+                            image_aspects: ImageAspectFlags::COLOR,
+                            transition_layout: ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                        },
+                    )?;
                 Self::create_depth_objects(&instance, &device, &mut data)?;
                 Self::create_framebuffers(&device, &mut data)?;
-                Self::create_texture_image(&instance, &device, &mut data)?;
-                Self::create_texture_image_view(&device, &mut data)?;
                 create_vertex_buffer(&mut data, StandardBufferMaps::Vertices, VERTICES.to_vec())?;
                 create_vertex_buffer(
                     &mut data,
@@ -394,7 +419,11 @@ impl VulkanApp {
         for i in 0..data.swapchain_images.len() {
             let info = DescriptorImageInfo::builder()
                 .image_layout(ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                .image_view(data.texture_image_view)
+                .image_view(
+                    data.image_manager
+                        .get_standard_buffer(TextureName::Bird)
+                        .image_view,
+                )
                 .sampler(data.texture_sampler);
 
             let image_info = &[info];
@@ -421,41 +450,34 @@ impl VulkanApp {
         device: &Device,
         data: &mut VulkanData,
     ) -> Result<()> {
-        let format = unsafe { Self::get_depth_format(instance, data) }?;
-
-        let (depth_image, depth_image_memory) = unsafe {
-            Self::create_image(
-                instance,
-                device,
-                data,
-                data.swapchain_extent.width,
-                data.swapchain_extent.height,
-                format,
-                ImageTiling::OPTIMAL,
-                ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
-                MemoryPropertyFlags::DEVICE_LOCAL,
-            )
-        }?;
-
-        data.depth_image = depth_image;
-        data.depth_image_memory = depth_image_memory;
-
-        // Image View
-
-        data.depth_image_view = unsafe {
-            Self::create_image_view(device, data.depth_image, format, ImageAspectFlags::DEPTH)
-        }?;
-
-        (unsafe {
-            Self::transition_image_layout(
-                device,
-                data,
-                data.depth_image,
-                format,
-                ImageLayout::UNDEFINED,
-                ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-            )
-        })?;
+        unsafe {
+            let width = data.swapchain_extent.width;
+            let height = data.swapchain_extent.height;
+            let format = Self::get_depth_format(instance, data)?;
+            data.image_manager
+                .allocate_buffer::<TextureAllocatorData, Image>(
+                    AllocateBufferType::Standard {
+                        name: TextureName::Depth,
+                    },
+                    TextureAllocatorData {
+                        instance,
+                        device,
+                        data: &mut data.clone(),
+                        image_data: ImageData {
+                            pixels: None,
+                            width,
+                            height,
+                            size: 0,
+                        },
+                        format,
+                        tiling: ImageTiling::OPTIMAL,
+                        usage: ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+                        properties: MemoryPropertyFlags::DEVICE_LOCAL,
+                        image_aspects: ImageAspectFlags::DEPTH,
+                        transition_layout: ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                    },
+                )?
+        };
 
         Ok(())
     }
@@ -502,62 +524,6 @@ impl VulkanApp {
         }
     }
 
-    unsafe fn create_texture_image(
-        instance: &Instance,
-        device: &Device,
-        data: &mut VulkanData,
-    ) -> Result<()> {
-        Ok(())
-    }
-
-    unsafe fn create_image(
-        instance: &Instance,
-        device: &Device,
-        data: &VulkanData,
-        width: u32,
-        height: u32,
-        format: Format,
-        tiling: ImageTiling,
-        usage: ImageUsageFlags,
-        properties: MemoryPropertyFlags,
-    ) -> Result<(Image, DeviceMemory)> {
-        // Image
-
-        let info = ImageCreateInfo::builder()
-            .image_type(ImageType::_2D)
-            .extent(Extent3D {
-                width,
-                height,
-                depth: 1,
-            })
-            .mip_levels(1)
-            .array_layers(1)
-            .format(format)
-            .tiling(tiling)
-            .initial_layout(ImageLayout::UNDEFINED)
-            .usage(usage)
-            .sharing_mode(SharingMode::EXCLUSIVE)
-            .samples(SampleCountFlags::_1);
-
-        let image = unsafe { device.create_image(&info, None) }?;
-
-        // Memory
-
-        let requirements = unsafe { device.get_image_memory_requirements(image) };
-
-        let info = MemoryAllocateInfo::builder()
-            .allocation_size(requirements.size)
-            .memory_type_index(unsafe {
-                get_memory_type_index(instance, data.physical_device, properties, requirements)
-            }?);
-
-        let image_memory = unsafe { device.allocate_memory(&info, None) }?;
-
-        (unsafe { device.bind_image_memory(image, image_memory, 0) })?;
-
-        Ok((image, image_memory))
-    }
-
     unsafe fn create_texture_sampler(device: &Device, data: &mut VulkanData) -> Result<()> {
         let info = SamplerCreateInfo::builder()
             .mag_filter(Filter::LINEAR)
@@ -577,56 +543,6 @@ impl VulkanApp {
             .max_lod(0.0);
 
         data.texture_sampler = unsafe { device.create_sampler(&info, None)? };
-
-        Ok(())
-    }
-
-    unsafe fn copy_buffer_to_image(
-        device: &Device,
-        data: &VulkanData,
-        buffer: Buffer,
-        image: Image,
-        width: u32,
-        height: u32,
-    ) -> Result<()> {
-        let command_buffer = unsafe { begin_single_time_commands(device, data.command_pool) }?;
-
-        let subresource = ImageSubresourceLayers::builder()
-            .aspect_mask(ImageAspectFlags::COLOR)
-            .mip_level(0)
-            .base_array_layer(0)
-            .layer_count(1);
-
-        let region = BufferImageCopy::builder()
-            .buffer_offset(0)
-            .buffer_row_length(0)
-            .buffer_image_height(0)
-            .image_subresource(subresource)
-            .image_offset(Offset3D { x: 0, y: 0, z: 0 })
-            .image_extent(Extent3D {
-                width,
-                height,
-                depth: 1,
-            });
-
-        unsafe {
-            device.cmd_copy_buffer_to_image(
-                command_buffer,
-                buffer,
-                image,
-                ImageLayout::TRANSFER_DST_OPTIMAL,
-                &[region],
-            )
-        };
-
-        (unsafe {
-            end_single_time_commands(
-                device,
-                data.graphics_queue,
-                data.command_pool,
-                command_buffer,
-            )
-        })?;
 
         Ok(())
     }
@@ -1121,7 +1037,12 @@ impl VulkanApp {
             .swapchain_image_views
             .iter()
             .map(|i| {
-                let attachments = &[*i, data.depth_image_view];
+                let attachments = &[
+                    *i,
+                    data.image_manager
+                        .get_standard_buffer(TextureName::Bird)
+                        .image_view,
+                ];
                 let create_info = FramebufferCreateInfo::builder()
                     .render_pass(data.render_pass)
                     .attachments(attachments)
@@ -1417,105 +1338,6 @@ impl VulkanApp {
         Ok((buffer, buffer_memory))
     }
 
-    unsafe fn transition_image_layout(
-        device: &Device,
-        data: &VulkanData,
-        image: Image,
-        format: Format,
-        old_layout: ImageLayout,
-        new_layout: ImageLayout,
-    ) -> Result<()> {
-        let (src_access_mask, dst_access_mask, src_stage_mask, dst_stage_mask) =
-            match (old_layout, new_layout) {
-                (ImageLayout::UNDEFINED, ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL) => (
-                    AccessFlags::empty(),
-                    AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
-                        | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
-                    PipelineStageFlags::TOP_OF_PIPE,
-                    PipelineStageFlags::EARLY_FRAGMENT_TESTS,
-                ),
-                (ImageLayout::UNDEFINED, ImageLayout::TRANSFER_DST_OPTIMAL) => (
-                    AccessFlags::empty(),
-                    AccessFlags::TRANSFER_WRITE,
-                    PipelineStageFlags::TOP_OF_PIPE,
-                    PipelineStageFlags::TRANSFER,
-                ),
-                (ImageLayout::TRANSFER_DST_OPTIMAL, ImageLayout::SHADER_READ_ONLY_OPTIMAL) => (
-                    AccessFlags::TRANSFER_WRITE,
-                    AccessFlags::SHADER_READ,
-                    PipelineStageFlags::TRANSFER,
-                    PipelineStageFlags::FRAGMENT_SHADER,
-                ),
-                _ => return Err(anyhow!("Unsupported image layout transition!")),
-            };
-
-        let command_buffer = unsafe { begin_single_time_commands(device, data.command_pool) }?;
-
-        let aspect_mask = if new_layout == ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL {
-            match format {
-                Format::D32_SFLOAT_S8_UINT | Format::D24_UNORM_S8_UINT => {
-                    ImageAspectFlags::DEPTH | ImageAspectFlags::STENCIL
-                }
-                _ => ImageAspectFlags::DEPTH,
-            }
-        } else {
-            ImageAspectFlags::COLOR
-        };
-
-        let subresource = ImageSubresourceRange::builder()
-            .aspect_mask(aspect_mask)
-            .base_mip_level(0)
-            .level_count(1)
-            .base_array_layer(0)
-            .layer_count(1);
-
-        let barrier = ImageMemoryBarrier::builder()
-            .old_layout(old_layout)
-            .new_layout(new_layout)
-            .src_queue_family_index(QUEUE_FAMILY_IGNORED)
-            .dst_queue_family_index(QUEUE_FAMILY_IGNORED)
-            .image(image)
-            .subresource_range(subresource)
-            .src_access_mask(src_access_mask)
-            .dst_access_mask(dst_access_mask);
-
-        unsafe {
-            device.cmd_pipeline_barrier(
-                command_buffer,
-                src_stage_mask,
-                dst_stage_mask,
-                DependencyFlags::empty(),
-                &[] as &[MemoryBarrier],
-                &[] as &[BufferMemoryBarrier],
-                &[barrier],
-            )
-        };
-
-        (unsafe {
-            end_single_time_commands(
-                device,
-                data.graphics_queue,
-                data.command_pool,
-                command_buffer,
-            )
-        })?;
-
-        Ok(())
-    }
-
-    unsafe fn create_texture_image_view(device: &Device, data: &mut VulkanData) -> Result<()> {
-        data.texture_image_view = unsafe {
-            Self::create_image_view(
-                device,
-                data.texture_image,
-                Format::R8G8B8A8_SRGB,
-                ImageAspectFlags::COLOR,
-            )
-        }?;
-
-        Ok(())
-    }
-
     unsafe fn create_swapchain_image_views(device: &Device, data: &mut VulkanData) -> Result<()> {
         data.swapchain_image_views = data
             .swapchain_images
@@ -1553,10 +1375,13 @@ impl VulkanApp {
     unsafe fn destroy_swapchain(&mut self) {
         debug!("Destroying Swapchain");
         unsafe {
-            self.device
-                .destroy_image_view(self.data.depth_image_view, None);
-            self.device.free_memory(self.data.depth_image_memory, None);
-            self.device.destroy_image(self.data.depth_image, None);
+            self.data
+                .image_manager
+                .free_standard_buffer(TextureName::Bird);
+            self.data
+                .image_manager
+                .free_standard_buffer(TextureName::Depth);
+
             self.device
                 .destroy_descriptor_pool(self.data.descriptor_pool, None);
             self.device
@@ -1588,13 +1413,15 @@ impl VulkanApp {
                 .free_uniform_buffers(UniformBufferMaps::SporadicBufferObject);
             self.device.device_wait_idle().unwrap();
 
+            self.data
+                .image_manager
+                .free_standard_buffer(TextureName::Bird);
+            self.data
+                .image_manager
+                .free_standard_buffer(TextureName::Depth);
+
             self.destroy_swapchain();
             self.device.destroy_sampler(self.data.texture_sampler, None);
-            self.device
-                .destroy_image_view(self.data.texture_image_view, None);
-            self.device.destroy_image(self.data.texture_image, None);
-            self.device
-                .free_memory(self.data.texture_image_memory, None);
             self.device
                 .destroy_descriptor_set_layout(self.data.descriptor_set_layout, None);
             self.data

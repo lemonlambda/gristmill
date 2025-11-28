@@ -18,7 +18,7 @@ use crate::engine::vulkan::shared_helpers::{copy_buffer, get_memory_type_index};
 
 pub mod buffer_operations;
 pub mod buffer_pair;
-// pub mod image_handler;
+pub mod image_handler;
 
 pub trait BufferManagerRequirements = Default + Debug + Display + Hash + Eq + PartialEq;
 
@@ -273,6 +273,7 @@ impl<
     ) -> Result<()> {
         debug!("Allocating a buffer named: {}", buffer_type);
         let buffer = needed_data.allocate_with_size(size)?;
+        debug!("Allocated buffer.");
 
         match buffer_type {
             AllocateBufferType::Temp => {
