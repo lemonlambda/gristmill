@@ -41,4 +41,5 @@
 - [ ] Actually use draw data when rendering
 - [x] Abstract over the GUI struct to make it less of a hassle to work with. See `GuiVulkanInfo`
 - [ ] Ensure second vertex buffer is being filled
-- [ ] Use textures from egui
+- [ ] Finish GUI Implementation
+    - [ ] Use textures from egui
