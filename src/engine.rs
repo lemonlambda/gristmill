@@ -39,6 +39,7 @@ impl Engine {
 
 const DT_FPS_60_NANO: u128 = 1_000_000_000 / 60;
 pub struct RedrawTime(Instant);
+pub struct AccumulatedTime(Instant);
 pub struct FPSCounter(u32);
 
 pub fn engine_partial() -> PartialManager {
@@ -78,6 +79,7 @@ pub fn engine_startup(world: &mut World, event_loop: &EventLoop<()>) -> Result<(
     let engine = Engine::new(event_loop)?;
 
     world.add_resource(RedrawTime(Instant::now()));
+    world.add_resource(AccumulatedTime(Instant::now()));
     world.add_resource(FPSCounter(0));
     world.add_resource(engine);
 
@@ -89,23 +91,10 @@ pub fn engine_main(
     event: Event<()>,
     elwt: &EventLoopWindowTarget<()>,
 ) -> Result<()> {
-    let redraw_time = world.try_get_resource_mut::<RedrawTime>();
+    let mut redraw_time = world.get_resource_mut::<RedrawTime>();
+    let mut accumulated_time = world.get_resource_mut::<AccumulatedTime>();
 
-    if redraw_time.is_none() {
-        warn!("Redraw Time is none.");
-        return Ok(());
-    }
-
-    let mut redraw_time = redraw_time.unwrap();
-
-    let fps_counter = world.try_get_resource_mut::<FPSCounter>();
-
-    if fps_counter.is_none() {
-        warn!("FPS Counter is none.");
-        return Ok(());
-    }
-
-    let mut fps_counter = fps_counter.unwrap();
+    let mut fps_counter = world.get_resource_mut::<FPSCounter>();
 
     let engine = world.try_get_resource_mut::<Engine>();
 
@@ -116,7 +105,11 @@ pub fn engine_main(
 
     let mut engine = engine.unwrap();
 
-    fps_counter.0 += 1;
+    if accumulated_time.0.elapsed().as_secs_f32() > 1.0 {
+        info!("FPS: {}", fps_counter.0);
+        fps_counter.0 = 0;
+        accumulated_time.0 = Instant::now();
+    }
 
     match event {
         // Request a redraw when all events were processed.
@@ -130,12 +123,9 @@ pub fn engine_main(
                     && !engine.minimized
                     && redraw_time.0.elapsed().as_nanos() > DT_FPS_60_NANO =>
             unsafe {
-                info!("FPS: {}", fps_counter.0);
-
                 engine.vulkan_app.render().unwrap();
-
+                fps_counter.0 += 1;
                 redraw_time.0 = Instant::now();
-                fps_counter.0 = 0;
             },
             WindowEvent::Resized(size) => {
                 if size.width == 0 || size.height == 0 {

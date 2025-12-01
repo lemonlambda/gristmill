@@ -1134,9 +1134,9 @@ impl VulkanApp {
 
             unsafe {
                 let mut vertex_buffers = vec![
-                    // data.buffer_manager
-                    //     .get_standard_buffer(StandardBufferMaps::Vertices)
-                    //     .buffer,
+                    data.buffer_manager
+                        .get_standard_buffer(StandardBufferMaps::Vertices)
+                        .buffer,
                     // data.buffer_manager
                     //     .get_standard_buffer(StandardBufferMaps::ExtraVertices(0))
                     //     .buffer,
@@ -1151,15 +1151,16 @@ impl VulkanApp {
                 );
 
                 let mut index_buffers = vec![
-                    // data.buffer_manager
-                    //     .get_standard_buffer(StandardBufferMaps::Indices)
-                    //     .buffer,
+                    data.buffer_manager
+                        .get_standard_buffer(StandardBufferMaps::Indices)
+                        .buffer,
                     // data.buffer_manager
                     //     .get_standard_buffer(StandardBufferMaps::ExtraIndices(0))
                     //     .buffer,
                 ];
                 let mut index_lengths = vec![
-                    // INDICES.len() as u32, INDICES.len() as u32
+                    INDICES.len() as u32,
+                    // INDICES.len() as u32
                 ];
                 gui_vulkan_info.add_to_index_buffers(
                     &mut data.buffer_manager,
@@ -1191,6 +1192,9 @@ impl VulkanApp {
                     model_bytes,
                 );
                 info!("Buffer count: {}", gui_vulkan_info.buffer_count);
+
+                const INDEXING_COUNTS: [u32; 2] = [10, 0];
+
                 for (i, buffer) in vertex_buffers.into_iter().enumerate() {
                     info!("Index ({i}) Length: {}", index_lengths[i]);
 
